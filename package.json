@@ -1,0 +1,76 @@
+{
+  "name": "ai-agent-cli",
+  "version": "1.0.0",
+  "description": "A powerful AI coding agent with multi-provider support (Anthropic, OpenAI, Gemini)",
+  "type": "module",
+  "main": "./dist/entrypoints/index.js",
+  "types": "./dist/entrypoints/index.d.ts",
+  "bin": {
+    "ai-agent-cli": "./bin/ai-agent-cli.js",
+    "aac": "./bin/ai-agent-cli.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "tsx src/entrypoints/cli.ts",
+    "build": "tsc",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "coding-assistant",
+    "anthropic",
+    "openai",
+    "gemini",
+    "claude",
+    "gpt",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/generative-ai": "^0.17.0",
+    "@types/turndown": "^5.0.6",
+    "boxen": "^7.1.1",
+    "chalk": "^5.3.0",
+    "cheerio": "^1.0.0-rc.12",
+    "cli-table3": "^0.6.5",
+    "dotenv": "^16.3.1",
+    "enquirer": "^2.4.1",
+    "execa": "^8.0.1",
+    "fast-glob": "^3.3.2",
+    "fs-extra": "^11.2.0",
+    "gray-matter": "^4.0.3",
+    "openai": "^4.51.0",
+    "ora": "^8.0.1",
+    "turndown": "^7.2.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vitest/ui": "^1.0.4",
+    "eslint": "^8.56.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  }
+}
