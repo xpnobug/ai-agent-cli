@@ -41,7 +41,15 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xpnobug/ai-agent-cli.git"
+  },
+  "homepage": "https://github.com/xpnobug/ai-agent-cli#readme",
+  "bugs": {
+    "url": "https://github.com/xpnobug/ai-agent-cli/issues"
+  },
+  "author": "xpnobug",
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
