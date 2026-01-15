@@ -27,16 +27,19 @@ const MODEL_CHOICES: Record<Provider, Array<{ name: string; message: string; hin
         { name: 'claude-sonnet-4-5-20250929', message: 'Claude Sonnet 4.5', hint: '推荐' },
         { name: 'claude-3-5-sonnet-20241022', message: 'Claude 3.5 Sonnet' },
         { name: 'claude-3-opus-20240229', message: 'Claude 3 Opus' },
+        { name: '__custom__', message: '自定义模型...', hint: '手动输入' },
     ],
     openai: [
         { name: 'gpt-4-turbo-preview', message: 'GPT-4 Turbo', hint: '推荐' },
         { name: 'gpt-4', message: 'GPT-4' },
         { name: 'gpt-3.5-turbo', message: 'GPT-3.5 Turbo' },
+        { name: '__custom__', message: '自定义模型...', hint: '手动输入' },
     ],
     gemini: [
         { name: 'gemini-1.5-pro', message: 'Gemini 1.5 Pro', hint: '推荐' },
         { name: 'gemini-1.5-flash', message: 'Gemini 1.5 Flash' },
         { name: 'gemini-pro', message: 'Gemini Pro' },
+        { name: '__custom__', message: '自定义模型...', hint: '手动输入' },
     ],
 };
 
@@ -95,7 +98,22 @@ export async function runSetupWizard(): Promise<UserConfig | null> {
             message: '选择模型',
             choices: MODEL_CHOICES[provider],
         });
-        const model: string = await modelPrompt.run();
+        let model: string = await modelPrompt.run();
+
+        // 如果选择自定义模型，则让用户输入
+        if (model === '__custom__') {
+            const customModelPrompt = new Input({
+                name: 'customModel',
+                message: '请输入模型名称',
+                validate: (value: string) => {
+                    if (!value || value.trim().length < 1) {
+                        return '模型名称不能为空';
+                    }
+                    return true;
+                },
+            });
+            model = await customModelPrompt.run();
+        }
 
         // 4. 询问是否使用第三方 API URL
         const useCustomUrlPrompt = new Confirm({
