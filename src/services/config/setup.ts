@@ -84,7 +84,7 @@ export async function runSetupWizard(): Promise<UserConfig | null> {
             name: 'apiKey',
             message: `请输入 ${provider.toUpperCase()} API Key`,
             validate: (value: string) => {
-                if (!value || value.trim().length < 10) {
+                if (!value || value.trim().length < 5) {
                     return 'API Key 不能为空且长度至少为 10 个字符';
                 }
                 return true;
