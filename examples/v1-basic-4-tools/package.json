@@ -1,0 +1,21 @@
+{
+  "name": "v1-basic-4-tools",
+  "version": "1.0.0",
+  "description": "v1: Model as Agent - 4个基础工具",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "execa": "^8.0.1",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/fs-extra": "^11.0.4",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
