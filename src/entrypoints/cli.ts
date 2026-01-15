@@ -2,7 +2,9 @@
  * AI Agent CLI 主入口
  */
 
-import { getConfig } from '../services/config/Config.js';
+import { Config } from '../services/config/Config.js';
+import { loadUserConfig, getConfigSummary } from '../services/config/configStore.js';
+import { runSetupWizard, runReconfigureWizard } from '../services/config/setup.js';
 import { createAdapter } from '../services/ai/adapters/factory.js';
 import { getSkillLoader } from '../tools/ai';
 import { createExecuteTool } from '../tools/dispatcher.js';
@@ -13,22 +15,37 @@ import { Banner, Messages, setThemeByProvider, getInput } from '../ui';
 import { getReminderManager } from '../core/reminder.js';
 import type { Message, ContentBlock } from '../core/types.js';
 
+
 /**
  * 主函数
  */
 async function main(): Promise<void> {
   try {
-    // 1. 加载配置
-    const config = getConfig();
+    // 1. 检查是否需要运行配置向导
+    let userConfig = loadUserConfig();
 
-    // 2. 设置主题
+    if (!userConfig) {
+      // 首次运行，启动配置向导
+      userConfig = await runSetupWizard();
+
+      if (!userConfig) {
+        // 用户取消配置
+        console.log('配置向导已取消，退出程序。');
+        process.exit(0);
+      }
+    }
+
+    // 2. 加载配置
+    const config = new Config(userConfig);
+
+    // 3. 设置主题
     setThemeByProvider(config.provider);
 
-    // 3. 初始化适配器
+    // 4. 初始化适配器
     console.log('正在初始化...');
     const adapter = await createAdapter(config.provider, config.apiKey, config.model, config.baseUrl);
 
-    // 4. 加载技能
+    // 5. 加载技能
     const skillLoader = getSkillLoader(config.skillsDir);
 
     // 5. 创建系统提示词
@@ -93,7 +110,23 @@ async function main(): Promise<void> {
             console.log('  /help, /h     - 显示帮助');
             console.log('  /clear, /c    - 清空对话历史');
             console.log('  /history      - 显示输入历史');
+            console.log('  /config       - 查看当前配置');
+            console.log('  /config set   - 重新配置');
             console.log('  exit, quit, q - 退出程序\n');
+            continue;
+          }
+          if (cmd === 'config') {
+            console.log('\n当前配置:');
+            console.log(getConfigSummary(userConfig));
+            console.log();
+            continue;
+          }
+          if (cmd === 'config set') {
+            const newConfig = await runReconfigureWizard();
+            if (newConfig) {
+              console.log('\n配置已更新，请重新启动 CLI 以使用新配置。\n');
+              process.exit(0);
+            }
             continue;
           }
           if (cmd === 'clear' || cmd === 'c') {
@@ -121,7 +154,7 @@ async function main(): Promise<void> {
         // 构建用户消息内容（可能包含 reminder）
         const reminder = reminderManager.getReminder();
         let userContent: string | ContentBlock[];
-        
+
         if (reminder) {
           userContent = [
             { type: 'text', text: reminder },

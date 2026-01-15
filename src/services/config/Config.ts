@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import type { Provider } from '../../core/types.js';
 import { EnvSchema, DEFAULT_MODELS, DEFAULT_ENDPOINTS } from './types.js';
 import type { Config as IConfig } from './types.js';
+import { loadUserConfig, type UserConfig } from './configStore.js';
 
 // 获取当前文件所在目录（ESM）
 const __filename = fileURLToPath(import.meta.url);
@@ -15,6 +16,11 @@ const __dirname = path.dirname(__filename);
 
 /**
  * 配置类 - 管理环境变量和 API 配置
+ * 
+ * 配置优先级：
+ * 1. 用户级配置 ~/.ai-agent/config.json
+ * 2. 项目级 .env 文件
+ * 3. 环境变量
  */
 export class Config implements IConfig {
   provider: Provider;
@@ -24,7 +30,32 @@ export class Config implements IConfig {
   workdir: string;
   skillsDir: string;
 
-  constructor() {
+  constructor(userConfig?: UserConfig | null) {
+    // 设置工作目录
+    this.workdir = process.cwd();
+
+    // 设置技能目录（在项目根目录的 skills 文件夹）
+    this.skillsDir = path.join(__dirname, '../../../skills');
+
+    // 优先使用传入的用户配置
+    if (userConfig) {
+      this.provider = userConfig.provider;
+      this.apiKey = userConfig.apiKey;
+      this.model = userConfig.model;
+      this.baseUrl = userConfig.baseUrl;
+      return;
+    }
+
+    // 尝试加载用户级配置
+    const savedConfig = loadUserConfig();
+    if (savedConfig) {
+      this.provider = savedConfig.provider;
+      this.apiKey = savedConfig.apiKey;
+      this.model = savedConfig.model;
+      this.baseUrl = savedConfig.baseUrl;
+      return;
+    }
+
     // 加载 .env 文件
     dotenvConfig();
 
@@ -33,12 +64,6 @@ export class Config implements IConfig {
 
     // 设置提供商
     this.provider = env.PROVIDER;
-
-    // 设置工作目录
-    this.workdir = process.cwd();
-
-    // 设置技能目录（在项目根目录的 skills 文件夹）
-    this.skillsDir = path.join(__dirname, '../../../skills');
 
     // 根据提供商获取配置
     switch (this.provider) {
@@ -63,7 +88,7 @@ export class Config implements IConfig {
     // 验证 API Key
     if (!this.apiKey) {
       throw new Error(
-        `${this.provider.toUpperCase()}_API_KEY 环境变量未设置。请在 .env 文件中配置。`
+        `${this.provider.toUpperCase()}_API_KEY 环境变量未设置。请运行配置向导或在 .env 文件中配置。`
       );
     }
   }
