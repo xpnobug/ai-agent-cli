@@ -6,12 +6,12 @@ import { Config } from '../services/config/Config.js';
 import { loadUserConfig, getConfigSummary } from '../services/config/configStore.js';
 import { runSetupWizard, runReconfigureWizard } from '../services/config/setup.js';
 import { createAdapter } from '../services/ai/adapters/factory.js';
-import { getSkillLoader } from '../tools/ai';
+import { getSkillLoader } from '../tools/ai/index.js';
 import { createExecuteTool } from '../tools/dispatcher.js';
 import { ALL_TOOLS } from '../tools/definitions.js';
 import { createSystemPrompt, getAgentDescriptions } from '../core/prompts.js';
 import { agentLoop } from '../core/loop.js';
-import { Banner, Messages, setThemeByProvider, getInput } from '../ui';
+import { Banner, Messages, setThemeByProvider, getInput } from '../ui/index.js';
 import { getReminderManager } from '../core/reminder.js';
 import type { Message, ContentBlock } from '../core/types.js';
 
