@@ -79,6 +79,12 @@ export class AnthropicAdapter extends ProtocolAdapter {
       textBlocks,
       toolCalls,
       stopReason: msg.stop_reason || 'end_turn',
+      usage: {
+        inputTokens: msg.usage.input_tokens,
+        outputTokens: msg.usage.output_tokens,
+        cacheCreationTokens: msg.usage.cache_creation_input_tokens ?? undefined,
+        cacheReadTokens: msg.usage.cache_read_input_tokens ?? undefined,
+      },
     };
   }
 

@@ -1,10 +1,13 @@
 /**
- * 自定义输入组件
- * 支持历史记录、ESC 取消、快捷命令
+ * 自定义输入组件 (基于 Cursor 类重构)
+ * 所有文本操作使用不可变的 Cursor 对象
  */
 
 import * as readline from 'node:readline';
+import stringWidth from 'string-width';
 import { getTheme } from '../theme.js';
+import { launchExternalEditor } from '../../utils/externalEditor.js';
+import { Cursor } from '../../utils/cursor.js';
 
 /**
  * 命令历史记录
@@ -72,7 +75,6 @@ class CommandHistory {
  */
 export interface InputConfig {
   prefix?: string;
-  placeholder?: string;
   showHints?: boolean;
 }
 
@@ -82,11 +84,11 @@ export interface InputConfig {
 export interface InputResult {
   value: string;
   cancelled: boolean;
-  command?: string; // 快捷命令如 /help
+  command?: string;
 }
 
 /**
- * 自定义输入管理器
+ * Input 类 - 使用 Cursor 架构
  */
 export class Input {
   private history: CommandHistory;
@@ -96,17 +98,11 @@ export class Input {
     this.history = new CommandHistory();
   }
 
-  /**
-   * 获取用户输入
-   */
   async prompt(config: InputConfig = {}): Promise<string> {
     const result = await this.promptWithResult(config);
     return result.cancelled ? '' : result.value;
   }
 
-  /**
-   * 获取用户输入（带详细结果）
-   */
   promptWithResult(config: InputConfig = {}): Promise<InputResult> {
     const theme = getTheme();
     const { prefix = '>>>', showHints = true } = config;
@@ -118,30 +114,57 @@ export class Input {
         terminal: true,
       });
 
-      let currentInput = '';
-      let cursorPos = 0;
-      const hintText = theme.textDim('ESC cancel · ↑↓ history · /help commands');
+      // 使用 Cursor 对象管理状态
+      let cursor = new Cursor('');
+      const hintText = theme.textDim('ESC cancel · ↑↓ history · Shift+Enter newline · Ctrl+G editor · /help');
 
-      // 清除当前行并重绘
+      // 渲染函数
       const redraw = () => {
-        // 移到输入行
+        const lines = cursor.getLines();
+        const pos = cursor.getPosition();
+        const prefixLen = prefix.length + 1;
+
+        // 清屏并重绘
         readline.cursorTo(process.stdout, 0);
-        readline.clearLine(process.stdout, 0);
-        process.stdout.write(theme.primary(prefix + ' ') + currentInput);
-        
-        // 显示底部提示
+        readline.clearScreenDown(process.stdout);
+
+        // 渲染所有行
+        for (let i = 0; i < lines.length; i++) {
+          if (i === 0) {
+            process.stdout.write(theme.primary(prefix + ' ') + lines[i]);
+          } else {
+            process.stdout.write('\n' + ' '.repeat(prefixLen) + lines[i]);
+          }
+        }
+
+        // 显示提示
         if (showHints) {
           process.stdout.write('\n');
-          readline.clearLine(process.stdout, 0);
           process.stdout.write(hintText);
-          // 移回输入行
-          readline.moveCursor(process.stdout, 0, -1);
         }
-        
-        readline.cursorTo(process.stdout, prefix.length + 1 + cursorPos);
+
+        // 定位光标
+        // 从当前位置(最后一行+提示行)移动到目标位置
+        const currentRow = lines.length - 1 + (showHints ? 1 : 0);
+        const targetRow = pos.line;
+        const rowDiff = targetRow - currentRow;
+
+        if (rowDiff !== 0) {
+          readline.moveCursor(process.stdout, 0, rowDiff);
+        }
+
+        // 计算光标所在行的文本，从行首到光标位置
+        const currentLine = lines[pos.line] || '';
+        const textBeforeCursor = currentLine.slice(0, pos.column);
+
+        // 计算显示宽度（中文字符占2列）
+        const displayWidth = stringWidth(textBeforeCursor);
+
+        // 定位到正确的显示列
+        readline.cursorTo(process.stdout, prefixLen + displayWidth);
       };
 
-      // 清理底部提示
+      // 清理提示
       const clearHints = () => {
         if (showHints) {
           process.stdout.write('\n');
@@ -158,7 +181,7 @@ export class Input {
         readline.cursorTo(process.stdout, prefix.length + 1);
       }
 
-      // 设置原始模式以捕获特殊按键
+      // 设置原始模式
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(true);
       }
@@ -180,7 +203,7 @@ export class Input {
         // ESC - 取消
         if (code === 27 && key.length === 1) {
           cleanup();
-          console.log(); // 换行
+          console.log();
           resolve({ value: '', cancelled: true });
           return;
         }
@@ -188,24 +211,28 @@ export class Input {
         // 方向键序列 (ESC [ A/B/C/D)
         if (code === 27 && key[1] === 91) {
           const arrow = key[2];
-          
-          // 上箭头
+
+          // 上箭头 - 历史记录或上移
           if (arrow === 65) {
-            const prev = this.history.up(currentInput);
+            const prev = this.history.up(cursor.text);
             if (prev !== null) {
-              currentInput = prev;
-              cursorPos = currentInput.length;
+              cursor = new Cursor(prev, prev.length);
+              redraw();
+            } else {
+              cursor = cursor.up();
               redraw();
             }
             return;
           }
-          
-          // 下箭头
+
+          // 下箭头 - 历史记录或下移
           if (arrow === 66) {
             const next = this.history.down();
             if (next !== null) {
-              currentInput = next;
-              cursorPos = currentInput.length;
+              cursor = new Cursor(next, next.length);
+              redraw();
+            } else {
+              cursor = cursor.down();
               redraw();
             }
             return;
@@ -213,37 +240,80 @@ export class Input {
 
           // 右箭头
           if (arrow === 67) {
-            if (cursorPos < currentInput.length) {
-              cursorPos++;
-              redraw();
-            }
+            cursor = cursor.right();
+            redraw();
             return;
           }
 
           // 左箭头
           if (arrow === 68) {
-            if (cursorPos > 0) {
-              cursorPos--;
-              redraw();
-            }
+            cursor = cursor.left();
+            redraw();
             return;
           }
+
+          // Delete键 (ESC [ 3 ~)
+          if (key[2] === 51 && key[3] === 126) {
+            cursor = cursor.delete();
+            redraw();
+            return;
+          }
+
+          return;
+        }
+
+        // Shift+Enter - 插入换行
+        if (code === 27 && key.length > 4) {
+          const keyStr = key.toString();
+          if (keyStr.includes('[13;2u') || keyStr.includes('[27;2;13~')) {
+            cursor = cursor.insert('\n');
+            redraw();
+            return;
+          }
+        }
+
+        // Ctrl+G - 外部编辑器
+        if (code === 7) {
+          cleanup();
+          console.log('\n正在打开外部编辑器...');
+
+          launchExternalEditor(cursor.text).then((result) => {
+            if (result.text !== null) {
+              const theme = getTheme();
+              console.log(theme.success(`✓ 已从 ${result.editorLabel || '编辑器'} 加载内容`));
+              cursor = new Cursor(result.text, result.text.length);
+            } else {
+              const theme = getTheme();
+              const errorMsg = result.error?.message || '编辑器不可用';
+              console.log(theme.error(`✗ ${errorMsg}`));
+              console.log(theme.textDim('提示: 设置 $EDITOR 环境变量或安装 code/nano/vim\n'));
+            }
+
+            this.promptWithResult(config).then((newResult) => {
+              resolve(newResult);
+            });
+          }).catch((error) => {
+            const theme = getTheme();
+            console.log(theme.error(`✗ 编辑器启动失败: ${error.message}\n`));
+            this.promptWithResult(config).then((newResult) => {
+              resolve(newResult);
+            });
+          });
+
           return;
         }
 
         // Enter - 提交
         if (code === 13 || code === 10) {
           cleanup();
-          console.log(); // 换行
-          
-          const value = currentInput.trim();
-          
-          // 添加到历史
+          console.log();
+
+          const value = cursor.text.trim();
+
           if (value) {
             this.history.add(value);
           }
 
-          // 检查是否是快捷命令
           if (value.startsWith('/')) {
             resolve({ value, cancelled: false, command: value.slice(1) });
           } else {
@@ -260,7 +330,7 @@ export class Input {
         }
 
         // Ctrl+D - 退出（空输入时）
-        if (code === 4 && currentInput === '') {
+        if (code === 4 && cursor.text === '') {
           cleanup();
           console.log();
           resolve({ value: 'exit', cancelled: false });
@@ -269,74 +339,49 @@ export class Input {
 
         // Backspace
         if (code === 127 || code === 8) {
-          if (cursorPos > 0) {
-            currentInput = 
-              currentInput.slice(0, cursorPos - 1) + 
-              currentInput.slice(cursorPos);
-            cursorPos--;
-            redraw();
-          }
-          return;
-        }
-
-        // Delete (ESC [ 3 ~)
-        if (code === 27 && key[1] === 91 && key[2] === 51 && key[3] === 126) {
-          if (cursorPos < currentInput.length) {
-            currentInput = 
-              currentInput.slice(0, cursorPos) + 
-              currentInput.slice(cursorPos + 1);
-            redraw();
-          }
+          cursor = cursor.backspace();
+          redraw();
           return;
         }
 
         // Ctrl+A - 移到行首
         if (code === 1) {
-          cursorPos = 0;
+          cursor = cursor.startOfLine();
           redraw();
           return;
         }
 
         // Ctrl+E - 移到行尾
         if (code === 5) {
-          cursorPos = currentInput.length;
+          cursor = cursor.endOfLine();
           redraw();
           return;
         }
 
         // Ctrl+U - 清除到行首
         if (code === 21) {
-          currentInput = currentInput.slice(cursorPos);
-          cursorPos = 0;
+          cursor = cursor.deleteToLineStart();
           redraw();
           return;
         }
 
         // Ctrl+K - 清除到行尾
         if (code === 11) {
-          currentInput = currentInput.slice(0, cursorPos);
+          cursor = cursor.deleteToLineEnd();
           redraw();
           return;
         }
 
         // Ctrl+W - 删除前一个单词
         if (code === 23) {
-          const before = currentInput.slice(0, cursorPos);
-          const after = currentInput.slice(cursorPos);
-          const newBefore = before.replace(/\S+\s*$/, '');
-          currentInput = newBefore + after;
-          cursorPos = newBefore.length;
+          cursor = cursor.deleteWordBefore();
           redraw();
           return;
         }
 
-        // 普通字符（包括多字节字符如中文）
+        // 普通字符
         if (code >= 32) {
-          currentInput =
-            currentInput.slice(0, cursorPos) +
-            char +
-            currentInput.slice(cursorPos);
-          cursorPos += char.length;
+          cursor = cursor.insert(char);
           redraw();
         }
       };
@@ -345,40 +390,17 @@ export class Input {
     });
   }
 
-  /**
-   * 取消当前输入
-   */
   cancel(): void {
     if (this.abortController) {
       this.abortController.abort();
     }
   }
 
-  /**
-   * 获取历史记录
-   */
   getHistory(): string[] {
     return this.history.getAll();
   }
 
-  /**
-   * 清空历史
-   */
   clearHistory(): void {
     this.history.clear();
   }
-}
-
-// 单例
-let inputInstance: Input | null = null;
-
-export function getInput(): Input {
-  if (!inputInstance) {
-    inputInstance = new Input();
-  }
-  return inputInstance;
-}
-
-export function resetInput(): void {
-  inputInstance = null;
 }

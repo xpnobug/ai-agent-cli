@@ -34,5 +34,5 @@ export type { BannerConfig } from './components/Banner.js';
 export { Messages } from './components/Messages.js';
 export { ToolDisplay, ToolSpinner } from './components/ToolDisplay.js';
 export { Spinner, ThinkingSpinner, thinkingSpinner } from './components/Spinner.js';
-export { Input, getInput, resetInput } from './components/Input.js';
+export { Input } from './components/Input.js';
 export type { InputConfig, InputResult } from './components/Input.js';

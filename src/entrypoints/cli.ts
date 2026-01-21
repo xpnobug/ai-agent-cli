@@ -11,8 +11,10 @@ import { createExecuteTool } from '../tools/dispatcher.js';
 import { ALL_TOOLS } from '../tools/definitions.js';
 import { createSystemPrompt, getAgentDescriptions } from '../core/prompts.js';
 import { agentLoop } from '../core/loop.js';
-import { Banner, Messages, setThemeByProvider, getInput } from '../ui/index.js';
+import { Banner, Messages, setThemeByProvider, Input, getTheme } from '../ui/index.js';
 import { getReminderManager } from '../core/reminder.js';
+import { countTokensFromUsage, formatTokenCount, getTokenPercentage } from '../utils/tokenCounter.js';
+import { getModelContextLength, getModelDisplayName } from '../utils/modelConfig.js';
 import type { Message, ContentBlock } from '../core/types.js';
 
 
@@ -74,8 +76,8 @@ async function main(): Promise<void> {
       agentTypes: ['explore', 'code', 'plan'],
     });
 
-    // 8. 获取输入管理器
-    const input = getInput();
+    // 8. 创建输入管理器
+    const input = new Input();
 
     // 9. 获取 Reminder 管理器
     const reminderManager = getReminderManager();
@@ -86,6 +88,18 @@ async function main(): Promise<void> {
     // 11. REPL 循环
     while (true) {
       try {
+        // 显示 Token 使用情况
+        if (history.length > 0) {
+          const theme = getTheme();
+          const currentTokens = countTokensFromUsage(history);
+          const maxTokens = getModelContextLength(userConfig.provider, userConfig.model);
+
+          const percentage = getTokenPercentage(currentTokens, maxTokens);
+          const modelDisplay = getModelDisplayName(userConfig.model);
+          const tokenInfo = `[${userConfig.provider}] ${modelDisplay}: ${formatTokenCount(currentTokens)}/${formatTokenCount(maxTokens)} (${percentage}%)`;
+          console.log(theme.textDim(tokenInfo) + '\n');
+        }
+
         // 读取用户输入
         const result = await input.promptWithResult({ prefix: '>>>' });
 
@@ -141,7 +155,7 @@ async function main(): Promise<void> {
               console.log('\n暂无输入历史\n');
             } else {
               console.log('\n输入历史:');
-              inputHistory.slice(0, 10).forEach((h, i) => {
+              inputHistory.slice(0, 10).forEach((h: string, i: number) => {
                 console.log(`  ${i + 1}. ${h}`);
               });
               console.log();

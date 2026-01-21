@@ -28,10 +28,19 @@ export interface ToolResultBlock {
 
 export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
 
+// Token 使用统计
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+}
+
 // 消息结构
 export interface Message {
   role: 'user' | 'assistant';
   content: MessageContent;
+  usage?: TokenUsage;  // API 返回的 token 使用数据
 }
 
 // 从响应中提取的工具调用
@@ -71,6 +80,7 @@ export interface LLMResponse {
   textBlocks: string[];
   toolCalls: ToolCall[];
   stopReason: string;
+  usage?: TokenUsage;  // Token 使用统计
 }
 
 // 提供商类型

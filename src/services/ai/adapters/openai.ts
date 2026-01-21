@@ -10,7 +10,7 @@ export class OpenAIAdapter extends ProtocolAdapter {
   private client!: OpenAI;
 
   async initializeClient(): Promise<void> {
-    const options: {apiKey: string; baseURL?: string} = {
+    const options: { apiKey: string; baseURL?: string } = {
       apiKey: this.apiKey,
     };
 
@@ -148,6 +148,10 @@ export class OpenAIAdapter extends ProtocolAdapter {
       textBlocks,
       toolCalls,
       stopReason: choice.finish_reason || 'stop',
+      usage: completion.usage ? {
+        inputTokens: completion.usage.prompt_tokens,
+        outputTokens: completion.usage.completion_tokens,
+      } : undefined,
     };
   }
 

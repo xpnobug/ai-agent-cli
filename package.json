@@ -1,6 +1,6 @@
 {
   "name": "@caoxupei/ai-agent-cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A powerful AI coding agent with multi-provider support (Anthropic, OpenAI, Gemini)",
   "type": "module",
   "main": "./dist/entrypoints/index.js",
@@ -67,6 +67,7 @@
     "gray-matter": "^4.0.3",
     "openai": "^4.51.0",
     "ora": "^8.0.1",
+    "string-width": "^8.1.0",
     "turndown": "^7.2.2",
     "zod": "^3.22.4"
   },
