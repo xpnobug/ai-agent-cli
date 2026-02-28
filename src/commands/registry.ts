@@ -5,6 +5,7 @@
 
 import type { Message } from '../core/types.js';
 import type { ContextCompressor } from '../core/contextCompressor.js';
+import type { TokenTracker } from '../utils/tokenTracker.js';
 
 /**
  * 命令上下文
@@ -24,6 +25,7 @@ export interface SlashCommandContext {
   reminderManager: { reset: () => void };
   compressor?: ContextCompressor;
   systemPrompt?: string;
+  tokenTracker?: TokenTracker;
 }
 
 /**
@@ -136,6 +138,20 @@ export class CommandRegistry {
    */
   listCommands(): SlashCommand[] {
     return Array.from(this.commands.values());
+  }
+
+  /**
+   * 获取所有命令名称（包含别名），用于 Tab 补全
+   */
+  getCommandNames(): string[] {
+    const names: string[] = [];
+    for (const [name, cmd] of this.commands) {
+      names.push(name);
+      if (cmd.aliases) {
+        names.push(...cmd.aliases);
+      }
+    }
+    return names.sort();
   }
 }
 

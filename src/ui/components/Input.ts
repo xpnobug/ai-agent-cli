@@ -76,6 +76,7 @@ class CommandHistory {
 export interface InputConfig {
   prefix?: string;
   showHints?: boolean;
+  commandNames?: string[]; // 可补全的命令名列表（用于 Tab 补全）
 }
 
 /**
@@ -105,7 +106,7 @@ export class Input {
 
   promptWithResult(config: InputConfig = {}): Promise<InputResult> {
     const theme = getTheme();
-    const { prefix = '>>>', showHints = true } = config;
+    const { prefix = '>>>', showHints = true, commandNames = [] } = config;
 
     return new Promise((resolve) => {
       const rl = readline.createInterface({
@@ -322,11 +323,12 @@ export class Input {
           return;
         }
 
-        // Ctrl+C - 退出
+        // Ctrl+C - 取消当前输入（不退出程序）
         if (code === 3) {
           cleanup();
           console.log('\n');
-          process.exit(0);
+          resolve({ value: '', cancelled: true });
+          return;
         }
 
         // Ctrl+D - 退出（空输入时）
@@ -376,6 +378,40 @@ export class Input {
         if (code === 23) {
           cursor = cursor.deleteWordBefore();
           redraw();
+          return;
+        }
+
+        // Tab - 命令补全
+        if (code === 9 && commandNames.length > 0) {
+          const text = cursor.text;
+          if (text.startsWith('/')) {
+            const partial = text.slice(1).toLowerCase();
+            const matches = commandNames.filter(name => name.startsWith(partial));
+
+            if (matches.length === 1) {
+              // 单个匹配：自动补全
+              cursor = new Cursor('/' + matches[0], matches[0].length + 1);
+              redraw();
+            } else if (matches.length > 1) {
+              // 多个匹配：显示候选列表
+              const theme = getTheme();
+              clearHints();
+              console.log();
+              console.log(theme.textDim('  候选命令: ' + matches.map(m => '/' + m).join('  ')));
+
+              // 找最长公共前缀
+              let common = matches[0];
+              for (const match of matches) {
+                while (!match.startsWith(common)) {
+                  common = common.slice(0, -1);
+                }
+              }
+              if (common.length > partial.length) {
+                cursor = new Cursor('/' + common, common.length + 1);
+              }
+              redraw();
+            }
+          }
           return;
         }
 
