@@ -3,8 +3,8 @@
  */
 
 // 主题
-export { getTheme, setThemeByProvider, resetTheme } from './theme.js';
-export type { Theme } from './theme.js';
+export { getTheme, setThemeByProvider, resetTheme, setTheme, getThemeName, getAvailableThemes, isAccessibilityMode } from './theme.js';
+export type { Theme, ThemeName } from './theme.js';
 
 // 常量
 export {

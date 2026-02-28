@@ -31,18 +31,18 @@ export class Config implements IConfig {
   skillsDir: string;
 
   constructor(userConfig?: UserConfig | null) {
-    // 设置工作目录
-    this.workdir = process.cwd();
+    // 设置工作目录（支持环境变量覆盖）
+    this.workdir = process.env.AI_AGENT_WORKDIR || process.cwd();
 
     // 设置技能目录（在项目根目录的 skills 文件夹）
     this.skillsDir = path.join(__dirname, '../../../skills');
 
     // 优先使用传入的用户配置
     if (userConfig) {
-      this.provider = userConfig.provider;
-      this.apiKey = userConfig.apiKey;
-      this.model = userConfig.model;
-      this.baseUrl = userConfig.baseUrl;
+      this.provider = (process.env.AI_AGENT_PROVIDER as Provider) || userConfig.provider;
+      this.apiKey = process.env.AI_AGENT_API_KEY || userConfig.apiKey;
+      this.model = process.env.AI_AGENT_MODEL || userConfig.model;
+      this.baseUrl = process.env.AI_AGENT_BASE_URL || userConfig.baseUrl;
       return;
     }
 

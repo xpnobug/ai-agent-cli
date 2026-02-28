@@ -3,7 +3,7 @@
  */
 
 import ora, { Ora } from 'ora';
-import { getTheme } from '../theme.js';
+import { getTheme, isAccessibilityMode } from '../theme.js';
 
 /**
  * 通用 Spinner 类
@@ -18,6 +18,13 @@ export class Spinner {
 
   start(): void {
     const theme = getTheme();
+
+    if (isAccessibilityMode()) {
+      // 无障碍模式：使用静态文本替代动画
+      console.log(`[处理中] ${this.text}`);
+      return;
+    }
+
     this.spinner = ora({
       text: theme.textDim(this.text),
       spinner: 'dots',
@@ -26,12 +33,20 @@ export class Spinner {
   }
 
   update(text: string): void {
+    if (isAccessibilityMode()) {
+      console.log(`[处理中] ${text}`);
+      return;
+    }
     if (this.spinner) {
       this.spinner.text = text;
     }
   }
 
   succeed(text?: string): void {
+    if (isAccessibilityMode()) {
+      if (text) console.log(`[OK] ${text}`);
+      return;
+    }
     if (this.spinner) {
       this.spinner.succeed(text);
       this.spinner = null;
@@ -39,6 +54,10 @@ export class Spinner {
   }
 
   fail(text?: string): void {
+    if (isAccessibilityMode()) {
+      if (text) console.log(`[ERR] ${text}`);
+      return;
+    }
     if (this.spinner) {
       this.spinner.fail(text);
       this.spinner = null;
