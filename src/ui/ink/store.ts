@@ -5,7 +5,7 @@
  * 实现精确订阅和 React 外读写。
  */
 
-import type { AppPhase, CompletedItem, CompletedItemInput, BannerConfig } from './types.js';
+import type { AppPhase, CompletedItem, CompletedItemInput, BannerConfig, LoadingState, StreamingState, FocusTarget } from './types.js';
 import { generateId } from './types.js';
 import type { Theme } from '../theme.js';
 
@@ -13,9 +13,15 @@ import type { Theme } from '../theme.js';
  * 应用状态
  */
 export interface AppState {
+  /** @deprecated 由 loading/streaming/focus 替代 */
   phase: AppPhase;
   completedItems: CompletedItem[];
   theme: Theme;
+  loading: LoadingState;
+  streaming: StreamingState;
+  focus: FocusTarget;
+  /** 输入框底部右侧的 token 使用信息 */
+  tokenInfo: string | null;
 }
 
 /**
@@ -46,6 +52,7 @@ export class AppStore {
 
   // ─── 便捷方法 ───
 
+  /** @deprecated 使用 setLoading/setStreaming/setFocus 替代 */
   setPhase(phase: AppPhase): void {
     this.setState(() => ({ phase }));
   }
@@ -54,6 +61,34 @@ export class AppStore {
     const fullItem = { ...item, id: generateId() } as CompletedItem;
     this.setState((prev) => ({
       completedItems: [...prev.completedItems, fullItem],
+    }));
+  }
+
+  // ─── 正交状态操作 ───
+
+  setLoading(loading: LoadingState): void {
+    this.setState(() => ({ loading }));
+  }
+
+  setStreaming(streaming: StreamingState): void {
+    this.setState(() => ({ streaming }));
+  }
+
+  setFocus(focus: FocusTarget): void {
+    this.setState(() => ({ focus }));
+  }
+
+  setTokenInfo(info: string | null): void {
+    this.setState(() => ({ tokenInfo: info }));
+  }
+
+  /** 清除所有动态状态回到输入模式 */
+  resetToInput(): void {
+    this.setState(() => ({
+      phase: { type: 'input' as const },
+      loading: null,
+      streaming: null,
+      focus: undefined,
     }));
   }
 
@@ -69,6 +104,10 @@ export class AppStore {
       phase: { type: 'input' },
       completedItems,
       theme,
+      loading: null,
+      streaming: null,
+      focus: undefined,
+      tokenInfo: null,
     };
   }
 }

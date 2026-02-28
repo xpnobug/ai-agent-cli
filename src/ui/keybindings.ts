@@ -84,10 +84,16 @@ export class KeybindingRegistry {
       // Delete键 (ESC [ 3 ~)
       if (data[2] === 51 && data[3] === 126) return 'delete';
 
+      // Shift+Enter (CSI 序列: ESC[13;2u 或 ESC[27;2;13~)
+      const keyStr = data.toString();
+      if (keyStr.includes('[13;2u') || keyStr.includes('[27;2;13~')) {
+        return 'shift+enter';
+      }
+
       return null;
     }
 
-    // Shift+Enter (ESC 序列)
+    // Shift+Enter (非 CSI 格式的备用检测)
     if (code === 27 && data.length > 4) {
       const keyStr = data.toString();
       if (keyStr.includes('[13;2u') || keyStr.includes('[27;2;13~')) {

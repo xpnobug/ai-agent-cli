@@ -1,31 +1,48 @@
 /**
  * InkUIController - 通过 AppStore 驱动 Ink UI
  *
- * 不再依赖 bind() 回调注入，直接操作外部 Store。
+ * 使用正交状态（loading/streaming/focus）替代互斥的 AppPhase。
  */
 
 import type { UIController } from '../UIController.js';
 import type { AgentEvent } from '../../core/agentEvent.js';
 import type { AppStore } from './store.js';
 import { isMarkdownContent } from '../markdown.js';
-import { renderPermissionDialog } from './dialogs/renderPermissionDialog.js';
+import type { TokenTracker } from '../../utils/tokenTracker.js';
 
 /**
  * 基于 Ink + AppStore 的 UI 控制器实现
  */
 export class InkUIController implements UIController {
   private store: AppStore;
+  private tokenTracker?: TokenTracker;
 
   // 流式文本批量 flush 相关
   private _streamFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentStreamText = '';
 
-  constructor(store: AppStore) {
+  // 当前工具调用的 detail（在 showToolStart 时保存，showToolResult 时使用）
+  private _currentToolDetail?: string;
+
+  constructor(store: AppStore, tokenTracker?: TokenTracker) {
     this.store = store;
+    this.tokenTracker = tokenTracker;
   }
 
   getStore(): AppStore {
     return this.store;
+  }
+
+  /**
+   * 获取当前 token 快照（tokenCount + costUSD）
+   */
+  private _getTokenSnapshot(): { tokenCount?: number; costUSD?: number } {
+    if (!this.tokenTracker) return {};
+    const stats = this.tokenTracker.getStats();
+    return {
+      tokenCount: stats.totalTokens || undefined,
+      costUSD: stats.totalCost || undefined,
+    };
   }
 
   /**
@@ -95,11 +112,15 @@ export class InkUIController implements UIController {
   }
 
   showThinking(): void {
-    this.store.setPhase({ type: 'thinking' });
+    this.store.setLoading({
+      mode: 'thinking',
+      startTime: Date.now(),
+      ...this._getTokenSnapshot(),
+    });
   }
 
   hideThinking(): void {
-    // 不切换到 input，等待后续 phase 设置
+    // 不立即清除 loading，等待后续状态设置（如 streaming 或 tool_use）
   }
 
   appendStreamText(text: string): void {
@@ -115,7 +136,9 @@ export class InkUIController implements UIController {
 
   private _flushStream(): void {
     this._streamFlushTimer = null;
-    this.store.setPhase({ type: 'streaming', text: this._currentStreamText });
+    // 进入流式状态时清除 loading
+    this.store.setLoading(null);
+    this.store.setStreaming({ text: this._currentStreamText });
   }
 
   clearStreamedText(_lineCount: number): void {
@@ -124,6 +147,7 @@ export class InkUIController implements UIController {
       clearTimeout(this._streamFlushTimer);
       this._streamFlushTimer = null;
     }
+    this.store.setStreaming(null);
   }
 
   finalizeStream(fullText: string, _isMarkdown: boolean): void {
@@ -138,21 +162,40 @@ export class InkUIController implements UIController {
     });
 
     this._currentStreamText = '';
-    this.store.setPhase({ type: 'input' });
+    this.store.resetToInput();
   }
 
   showToolStart(toolName: string, input?: Record<string, unknown>): void {
-    const detail = input ? JSON.stringify(input).slice(0, 50) : undefined;
-    this.store.setPhase({ type: 'tool_active', name: toolName, detail });
+    // 对 Bash 工具，提取 command 参数作为 detail
+    let detail: string | undefined;
+    if (input) {
+      if (toolName.toLowerCase() === 'bash' && input.command) {
+        detail = String(input.command).slice(0, 80);
+      } else {
+        detail = JSON.stringify(input).slice(0, 50);
+      }
+    }
+    this._currentToolDetail = detail;
+    this.store.setLoading({
+      mode: 'tool_use',
+      startTime: Date.now(),
+      toolName,
+      toolDetail: detail,
+      ...this._getTokenSnapshot(),
+    });
   }
 
   showToolResult(toolName: string, result: string, _input?: Record<string, unknown>): void {
-    const summary = result.split('\n')[0].slice(0, 80);
+    // 保留多行结果，由 ToolCallView 负责截断展示
+    const maxChars = 500;
+    const truncated = result.length > maxChars ? result.slice(0, maxChars) : result;
     this.store.addCompleted({
       type: 'tool_call',
       name: toolName,
-      result: summary,
+      detail: this._currentToolDetail,
+      result: truncated,
     });
+    this._currentToolDetail = undefined;
   }
 
   showToolOutput(output: string, opts?: { isError?: boolean; maxLines?: number }): void {
@@ -178,8 +221,20 @@ export class InkUIController implements UIController {
     params: Record<string, unknown>,
     reason?: string
   ): Promise<'allow' | 'deny' | 'always'> {
-    // 使用独立 Ink 实例渲染权限对话框，不阻塞主 UI
-    return renderPermissionDialog(toolName, params, reason);
+    // 使用内联 focus 对话框替代独立 Ink 实例
+    return new Promise((resolve) => {
+      this.store.setFocus({
+        type: 'permission',
+        toolName,
+        params,
+        reason,
+        resolve: (result) => {
+          // 用户做出选择后，清除焦点
+          this.store.setFocus(undefined);
+          resolve(result);
+        },
+      });
+    });
   }
 
   showWarning(msg: string): void {
@@ -215,7 +270,7 @@ export class InkUIController implements UIController {
   }
 
   goToInput(): void {
-    this.store.setPhase({ type: 'input' });
+    this.store.resetToInput();
   }
 
   addUserMessage(text: string): void {

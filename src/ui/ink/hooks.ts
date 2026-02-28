@@ -4,7 +4,7 @@
  * 基于 useSyncExternalStore，组件只在选择的 state slice 变化时重渲染。
  */
 
-import { useSyncExternalStore, useRef, useCallback } from 'react';
+import { useSyncExternalStore, useRef, useCallback, useState, useEffect } from 'react';
 import type { AppStore, AppState } from './store.js';
 
 /**
@@ -36,4 +36,32 @@ export function useAppStore<T>(store: AppStore, selector: (s: AppState) => T): T
   );
 
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+/**
+ * useElapsedTime — 每 100ms 更新一次经过时间
+ *
+ * @param startTime 起始时间戳（Date.now()），传 null 停止计时
+ * @returns 经过的秒数
+ */
+export function useElapsedTime(startTime: number | null): number {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (startTime === null) {
+      setElapsed(0);
+      return;
+    }
+
+    // 立即计算一次
+    setElapsed((Date.now() - startTime) / 1000);
+
+    const timer = setInterval(() => {
+      setElapsed((Date.now() - startTime) / 1000);
+    }, 100);
+
+    return () => clearInterval(timer);
+  }, [startTime]);
+
+  return elapsed;
 }

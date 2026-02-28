@@ -102,47 +102,31 @@ export const ASCII_LOGO = [
  * 状态图标
  */
 export const STATUS_ICONS = {
-  success: '✓',
-  error: '✗',
-  warning: '⚠',
-  info: 'ℹ',
+  success: '✱',
+  error: '✱',
+  warning: '✱',
+  info: '✱',
   pending: '○',
   inProgress: '◐',
   completed: '●',
   spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
 };
 
-
 /**
- * 工具图标
+ * 工具图标（已统一为 ● 前缀，不再按工具名映射 emoji）
  */
-export const TOOL_ICONS: Record<string, string> = {
-  bash: '⚡',
-  read_file: '📄',
-  write_file: '✏️',
-  edit_file: '📝',
-  Glob: '🔍',
-  Grep: '🔎',
-  TodoWrite: '📋',
-  TaskCreate: '📋',
-  TaskGet: '📋',
-  TaskUpdate: '📋',
-  TaskList: '📋',
-  TaskOutput: '📊',
-  TaskStop: '🛑',
-  Skill: '🎯',
-  Task: '🤖',
-  SendMessage: '💬',
-  EnterPlanMode: '📐',
-  ExitPlanMode: '✅',
-  WebFetch: '🌐',
-  WebSearch: '🔍',
-  AskUserQuestion: '❓',
-  ListMcpResources: '📦',
-  ReadMcpResource: '📦',
-};
+export const TOOL_ICONS: Record<string, string> = {};
 
 /**
  * 默认工具图标
  */
-export const DEFAULT_ICON = '🔧';
+export const DEFAULT_ICON = '●';
+
+/** Claude Code 风格 UI 符号 */
+export const UI_SYMBOLS = {
+  aiPrefix: '●',        // AI 消息前缀
+  userPrefix: '❯',      // 用户消息/输入前缀
+  statusPrefix: '✱',    // 状态/spinner 前缀
+  toolOutput: '⎿',      // 工具输出连接符
+  statusBar: '▸▸',      // 底部状态栏前缀
+};

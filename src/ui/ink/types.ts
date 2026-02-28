@@ -27,6 +27,7 @@ export type CompletedItem =
 
 /**
  * 应用阶段（活跃区域显示状态）
+ * @deprecated 由 loading/streaming/focus 三个正交状态替代
  */
 export type AppPhase =
   | { type: 'input' }
@@ -38,6 +39,32 @@ export type AppPhase =
       questions: unknown[];
       resolve: (r: string) => void;
     };
+
+// ─── 正交状态类型 ───
+
+/** Spinner 模式 */
+export type LoadingMode = 'thinking' | 'tool_use' | 'requesting';
+
+/** 加载状态 */
+export type LoadingState = {
+  mode: LoadingMode;
+  startTime: number;
+  toolName?: string;
+  toolDetail?: string;
+  tokenCount?: number;
+  costUSD?: number;
+} | null;
+
+/** 流式文本状态 */
+export type StreamingState = {
+  text: string;
+} | null;
+
+/** 焦点目标 */
+export type FocusTarget =
+  | undefined // 显示输入框
+  | { type: 'permission'; toolName: string; params: Record<string, unknown>; reason?: string; resolve: (r: 'allow' | 'deny' | 'always') => void }
+  | { type: 'question'; questions: unknown[]; resolve: (r: string) => void };
 
 /**
  * 不含 id 的 CompletedItem 创建类型

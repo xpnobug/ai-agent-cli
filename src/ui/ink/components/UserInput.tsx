@@ -8,6 +8,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Box, Text, useStdin, useApp } from 'ink';
 import { Cursor } from '../../../utils/cursor.js';
 import { getInkColors } from '../../theme.js';
+import { UI_SYMBOLS } from '../../../core/constants.js';
 import type { KeybindingRegistry } from '../../keybindings.js';
 
 export interface UserInputProps {
@@ -17,6 +18,7 @@ export interface UserInputProps {
   onCancel: () => void;
   onExit: () => void;
   keybindingRegistry?: KeybindingRegistry;
+  tokenInfo?: string | null;
 }
 
 /**
@@ -79,12 +81,13 @@ class CommandHistory {
 const commandHistory = new CommandHistory();
 
 export function UserInput({
-  prefix = '>>>',
+  prefix = '❯',
   commandNames = [],
   onSubmit,
   onCancel,
   onExit,
   keybindingRegistry,
+  tokenInfo,
 }: UserInputProps) {
   const [cursor, setCursor] = useState(() => new Cursor(''));
   const cursorRef = useRef(cursor);
@@ -422,18 +425,23 @@ export function UserInput({
   const colors = getInkColors();
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={1}>
+      <Text dimColor>{'─'.repeat((process.stdout.columns || 80) - 1)}</Text>
       {lines.map((line, lineIdx) => (
         <Box key={lineIdx}>
-          {lineIdx === 0 ? (
-            <Text color={colors.cursor} bold>{prefix} </Text>
-          ) : (
-            <Text>    </Text>
-          )}
+          <Box flexShrink={0} width={2}>
+            {lineIdx === 0 ? (
+              <Text color={colors.cursor} bold>{prefix}</Text>
+            ) : (
+              <Text></Text>
+            )}
+          </Box>
           {lineIdx === pos.line ? (
             <Text>
               {line.slice(0, pos.column)}
-              <Text inverse>{line[pos.column] || ' '}</Text>
+              {line[pos.column] !== undefined
+                ? <Text inverse>{line[pos.column]}</Text>
+                : <Text color={colors.cursor}>█</Text>}
               {line.slice(pos.column + 1)}
             </Text>
           ) : (
@@ -441,7 +449,11 @@ export function UserInput({
           )}
         </Box>
       ))}
-      <Text dimColor>ESC cancel · ↑↓ history · Shift+Enter newline · /help</Text>
+      <Text dimColor>{'─'.repeat((process.stdout.columns || 80) - 1)}</Text>
+      <Box justifyContent="space-between" width={(process.stdout.columns || 80) - 1}>
+        <Text dimColor>{UI_SYMBOLS.statusBar} esc to interrupt · ↑↓ history · /help</Text>
+        {tokenInfo && <Text dimColor>{tokenInfo}</Text>}
+      </Box>
     </Box>
   );
 }

@@ -153,7 +153,7 @@ async function main(): Promise<void> {
     const appStore = new AppStore(store);
 
     // 18. 创建 Ink UI 控制器（注入 store）
-    const inkController = new InkUIController(appStore);
+    const inkController = new InkUIController(appStore, tokenTracker);
 
     // 19. 获取 Reminder 管理器
     const reminderManager = getReminderManager();
@@ -193,13 +193,13 @@ async function main(): Promise<void> {
           return;
         }
 
-        // 显示 Token 使用情况
+        // 更新输入框底部 Token 使用信息
         if (history.length > 0) {
           const currentTokens = countTokensFromUsage(history);
           const percentage = getTokenPercentage(currentTokens, modelContextLength);
           const modelDisplay = getModelDisplayName(config.model);
           const tokenInfo = `[${config.provider}] ${modelDisplay}: ${formatTokenCount(currentTokens)}/${formatTokenCount(modelContextLength)} (${percentage}%)`;
-          inkController.showInfo(tokenInfo);
+          appStore.setTokenInfo(tokenInfo);
         }
 
         // UserPromptSubmit Hook
@@ -312,7 +312,10 @@ async function main(): Promise<void> {
 
         // 显示响应耗时
         const elapsed = (Date.now() - startTime) / 1000;
-        inkController.showInfo(`⏱  ${elapsed.toFixed(2)}s`);
+        const elapsedStr = elapsed >= 60
+          ? `${Math.floor(elapsed / 60)}m ${Math.round(elapsed % 60)}s`
+          : `${elapsed.toFixed(1)}s`;
+        inkController.showInfo(`Crunched for ${elapsedStr}`);
       } catch (error: unknown) {
         // 重置中断控制器
         rootAbort = null;
@@ -350,6 +353,10 @@ async function main(): Promise<void> {
         onExit: handleExit,
         commandNames: registry.getCommandNames(),
         keybindingRegistry,
+        getTokenStats: () => {
+          const stats = tokenTracker.getStats();
+          return { totalTokens: stats.totalTokens, totalCost: stats.totalCost };
+        },
       }),
       { exitOnCtrlC: false }
     );
