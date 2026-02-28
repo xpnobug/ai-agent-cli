@@ -3,19 +3,29 @@
  */
 
 import { Config } from '../services/config/Config.js';
-import { loadUserConfig, getConfigSummary } from '../services/config/configStore.js';
-import { runSetupWizard, runReconfigureWizard } from '../services/config/setup.js';
+import { loadUserConfig } from '../services/config/configStore.js';
+import { runSetupWizard } from '../services/config/setup.js';
 import { createAdapter } from '../services/ai/adapters/factory.js';
 import { getSkillLoader } from '../tools/ai/index.js';
 import { createExecuteTool } from '../tools/dispatcher.js';
-import { ALL_TOOLS } from '../tools/definitions.js';
+import { getAllTools } from '../tools/definitions.js';
 import { createSystemPrompt, getAgentDescriptions } from '../core/prompts.js';
 import { agentLoop } from '../core/loop.js';
 import { Banner, Messages, setThemeByProvider, Input, getTheme } from '../ui/index.js';
 import { getReminderManager } from '../core/reminder.js';
 import { countTokensFromUsage, formatTokenCount, getTokenPercentage } from '../utils/tokenCounter.js';
 import { getModelContextLength, getModelDisplayName } from '../utils/modelConfig.js';
+import { getCommandRegistry } from '../commands/registry.js';
+import { getBuiltinCommands } from '../commands/builtinCommands.js';
+import { ContextCompressor } from '../core/contextCompressor.js';
+import { getAgentTypeNames } from '../core/agents.js';
+import { getPermissionManager } from '../core/permissions.js';
+import { loadPermissionsConfig } from '../services/config/permissions.js';
+import { HookManager } from '../core/hooks.js';
+import { loadHooksConfig } from '../services/config/hooks.js';
+import { MCPRegistry } from '../services/mcp/registry.js';
 import type { Message, ContentBlock } from '../core/types.js';
+import type { SlashCommandContext } from '../commands/registry.js';
 
 
 /**
@@ -50,49 +60,103 @@ async function main(): Promise<void> {
     // 5. 加载技能
     const skillLoader = getSkillLoader(config.skillsDir);
 
-    // 5. 创建系统提示词
+    // 6. 创建系统提示词
     const systemPrompt = createSystemPrompt(
       config.workdir,
       skillLoader.getDescriptions(),
       getAgentDescriptions()
     );
 
-    // 6. 创建工具执行函数
+    // 7. 初始化上下文压缩器
+    const modelContextLength = getModelContextLength(userConfig.provider, userConfig.model);
+    const compressor = new ContextCompressor(adapter, modelContextLength);
+
+    // 8. 初始化权限管理器
+    const permissionsConfig = loadPermissionsConfig(config.workdir);
+    const permissionManager = getPermissionManager(permissionsConfig);
+
+    // 9. 初始化 Hook 管理器
+    const hooksConfig = loadHooksConfig(config.workdir);
+    const hookManager = new HookManager(config.workdir, hooksConfig);
+
+    // 10. 初始化 MCP 注册表
+    const mcpRegistry = new MCPRegistry(config.workdir);
+    await mcpRegistry.loadConfig();
+    if (mcpRegistry.hasServers()) {
+      await mcpRegistry.connectAll();
+    }
+
+    // 获取动态工具列表（包含 MCP 工具）
+    const mcpTools = mcpRegistry.getAllTools();
+    const dynamicTools = getAllTools(mcpTools);
+
+    // 11. 创建工具执行函数
     const executeTool = createExecuteTool({
       workdir: config.workdir,
       skillLoader,
       adapter,
       systemPrompt,
-      tools: ALL_TOOLS,
+      tools: dynamicTools,
+      mcpRegistry,
     });
 
-    // 7. 显示启动横幅
+    // 12. 初始化命令注册系统
+    const registry = getCommandRegistry();
+    const builtinCommands = getBuiltinCommands();
+    for (const cmd of builtinCommands) {
+      registry.register(cmd);
+    }
+
+    // 12. 触发 SessionStart Hook
+    if (hookManager.hasHooksFor('SessionStart')) {
+      await hookManager.emit('SessionStart', { workdir: config.workdir });
+    }
+
+    // 13. 显示启动横幅
     Banner.render({
       provider: config.provider,
       providerDisplayName: config.getProviderDisplayName(),
       model: config.model,
       workdir: config.workdir,
       skills: skillLoader.listSkills(),
-      agentTypes: ['explore', 'code', 'plan'],
+      agentTypes: getAgentTypeNames(),
     });
 
-    // 8. 创建输入管理器
+    // 14. 创建输入管理器
     const input = new Input();
 
-    // 9. 获取 Reminder 管理器
+    // 15. 获取 Reminder 管理器
     const reminderManager = getReminderManager();
 
-    // 10. 对话历史
+    // 16. 对话历史
     const history: Message[] = [];
 
-    // 11. REPL 循环
+    // 17. 创建命令上下文
+    const cmdContext: SlashCommandContext = {
+      workdir: config.workdir,
+      history,
+      config: {
+        provider: config.provider,
+        model: config.model,
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        getProviderDisplayName: () => config.getProviderDisplayName(),
+      },
+      userConfig: userConfig as any,
+      input: { getHistory: () => input.getHistory() },
+      reminderManager,
+      compressor,
+      systemPrompt,
+    };
+
+    // 18. REPL 循环
     while (true) {
       try {
         // 显示 Token 使用情况
         if (history.length > 0) {
           const theme = getTheme();
           const currentTokens = countTokensFromUsage(history);
-          const maxTokens = getModelContextLength(userConfig.provider, userConfig.model);
+          const maxTokens = modelContextLength;
 
           const percentage = getTokenPercentage(currentTokens, maxTokens);
           const modelDisplay = getModelDisplayName(userConfig.model);
@@ -112,57 +176,66 @@ async function main(): Promise<void> {
 
         // 检查退出命令
         if (!userInput || ['exit', 'quit', 'q'].includes(userInput.toLowerCase())) {
+          // 触发 SessionEnd Hook
+          if (hookManager.hasHooksFor('SessionEnd')) {
+            await hookManager.emit('SessionEnd', { workdir: config.workdir });
+          }
+          // 断开 MCP 连接
+          mcpRegistry.disconnectAll();
           Messages.printGoodbye();
           break;
         }
 
-        // 处理快捷命令
+        // UserPromptSubmit Hook
+        if (hookManager.hasHooksFor('UserPromptSubmit')) {
+          await hookManager.emit('UserPromptSubmit', {
+            workdir: config.workdir,
+          });
+        }
+
+        // 处理斜杠命令
         if (result.command) {
-          const cmd = result.command.toLowerCase();
-          if (cmd === 'help' || cmd === 'h') {
-            console.log('\n可用命令:');
-            console.log('  /help, /h     - 显示帮助');
-            console.log('  /clear, /c    - 清空对话历史');
-            console.log('  /history      - 显示输入历史');
-            console.log('  /config       - 查看当前配置');
-            console.log('  /config set   - 重新配置');
-            console.log('  exit, quit, q - 退出程序\n');
+          const cmd = result.command;
+
+          // 特殊处理 help 命令（需要 registry.getHelp()）
+          if (cmd.toLowerCase() === 'help' || cmd.toLowerCase() === 'h') {
+            console.log(registry.getHelp());
             continue;
           }
-          if (cmd === 'config') {
-            console.log('\n当前配置:');
-            console.log(getConfigSummary(userConfig));
-            console.log();
-            continue;
-          }
-          if (cmd === 'config set') {
-            const newConfig = await runReconfigureWizard();
-            if (newConfig) {
-              console.log('\n配置已更新，请重新启动 CLI 以使用新配置。\n');
-              process.exit(0);
+
+          // 尝试通过注册系统执行
+          const cmdResult = await registry.execute(cmd, cmdContext);
+          if (cmdResult.handled) {
+            if (cmdResult.output) {
+              console.log('\n' + cmdResult.output + '\n');
             }
             continue;
           }
-          if (cmd === 'clear' || cmd === 'c') {
-            history.length = 0;
-            reminderManager.reset();
-            console.log('\n对话历史已清空\n');
-            continue;
-          }
-          if (cmd === 'history') {
-            const inputHistory = input.getHistory();
-            if (inputHistory.length === 0) {
-              console.log('\n暂无输入历史\n');
-            } else {
-              console.log('\n输入历史:');
-              inputHistory.slice(0, 10).forEach((h: string, i: number) => {
-                console.log(`  ${i + 1}. ${h}`);
-              });
-              console.log();
-            }
-            continue;
-          }
+
           // 未知命令，当作普通输入处理
+        }
+
+        // 自动上下文压缩
+        if (compressor.shouldCompact(history)) {
+          // PreCompact Hook
+          if (hookManager.hasHooksFor('PreCompact')) {
+            await hookManager.emit('PreCompact', { workdir: config.workdir });
+          }
+
+          try {
+            const compactResult = await compressor.compact(history, systemPrompt);
+            history.length = 0;
+            history.push(...compactResult.newHistory);
+            const theme = getTheme();
+            console.log(theme.textDim(`[上下文已自动压缩: ${compactResult.originalLength} → ${compactResult.compressedLength} 条消息]`));
+
+            // PostCompact Hook
+            if (hookManager.hasHooksFor('PostCompact')) {
+              await hookManager.emit('PostCompact', { workdir: config.workdir });
+            }
+          } catch {
+            // 压缩失败不影响正常对话
+          }
         }
 
         // 构建用户消息内容（可能包含 reminder）
@@ -193,13 +266,17 @@ async function main(): Promise<void> {
         // 记录开始时间
         const startTime = Date.now();
 
-        // 运行代理循环
+        // 运行代理循环（传入权限管理器和 Hook 管理器）
         const newHistory = await agentLoop(
           history,
           systemPrompt,
-          ALL_TOOLS,
+          dynamicTools,
           adapter,
-          executeTool
+          executeTool,
+          {
+            permissionManager,
+            hookManager,
+          }
         );
 
         // 更新历史
