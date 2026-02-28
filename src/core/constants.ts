@@ -65,7 +65,7 @@ export const DEFAULTS = {
   maxTurns: 50,
   subagentMaxTurns: 10,
   todoNagThreshold: 10,
-  bashTimeout: 60000, // 60秒
+  bashTimeout: 300000, // 300秒（5分钟）
   webFetchTimeout: 30000, // 30秒
   maxTodos: 20,
 };
@@ -120,13 +120,22 @@ export const TOOL_ICONS: Record<string, string> = {
   Glob: '🔍',
   Grep: '🔎',
   TodoWrite: '📋',
+  TaskCreate: '📋',
+  TaskGet: '📋',
+  TaskUpdate: '📋',
+  TaskList: '📋',
+  TaskOutput: '📊',
+  TaskStop: '🛑',
   Skill: '🎯',
   Task: '🤖',
+  SendMessage: '💬',
   EnterPlanMode: '📐',
   ExitPlanMode: '✅',
   WebFetch: '🌐',
   WebSearch: '🔍',
   AskUserQuestion: '❓',
+  ListMcpResources: '📦',
+  ReadMcpResource: '📦',
 };
 
 /**

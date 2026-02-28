@@ -6,6 +6,7 @@
 import type { ToolDefinition, AgentType } from '../core/types.js';
 import { AGENT_TYPES, getAgentTypeDescriptions } from '../core/agents.js';
 import { DEFAULTS } from '../core/constants.js';
+import { getMCPBuiltinTools } from './mcp/mcpTools.js';
 
 // 1. Bash 工具
 export const BASH_TOOL: ToolDefinition = {
@@ -15,12 +16,13 @@ export const BASH_TOOL: ToolDefinition = {
 功能:
 - 运行任何 shell 命令（ls、git、npm、grep 等）
 - 输出被截断为 50MB
-- 命令超时 ${DEFAULTS.bashTimeout / 1000} 秒
+- 默认超时 ${DEFAULTS.bashTimeout / 1000} 秒，可通过 timeout 参数自定义
+- 支持后台执行模式
 
 使用建议:
 - 运行非平凡命令时，先解释命令的作用
 - 避免运行交互式命令
-- 避免运行长时间运行的命令（如 npm run dev）
+- 长时间运行的命令使用 run_in_background 模式
 - 对于文件搜索，优先使用 Glob 和 Grep 工具`,
   input_schema: {
     type: 'object',
@@ -28,6 +30,18 @@ export const BASH_TOOL: ToolDefinition = {
       command: {
         type: 'string',
         description: '要执行的 bash 命令',
+      },
+      run_in_background: {
+        type: 'boolean',
+        description: '是否在后台运行（可选，默认 false）。后台任务返回 taskId，用 TaskOutput 获取结果。',
+      },
+      timeout: {
+        type: 'number',
+        description: `超时时间（毫秒，可选，默认 ${DEFAULTS.bashTimeout}，最大 600000）`,
+      },
+      description: {
+        type: 'string',
+        description: '命令描述（可选，用于进度显示）',
       },
     },
     required: ['command'],
@@ -41,13 +55,13 @@ export const READ_FILE_TOOL: ToolDefinition = {
 
 功能:
 - 读取任何文本文件
-- 可选择限制读取行数
+- 可选择限制读取行数和起始偏移
 - 自动检测文件编码
 
 使用建议:
 - 编辑文件前先读取以了解内容
 - 批量读取多个相关文件以获取上下文
-- 对于大文件，使用 limit 参数限制行数`,
+- 对于大文件，使用 offset + limit 分段读取`,
   input_schema: {
     type: 'object',
     properties: {
@@ -58,6 +72,10 @@ export const READ_FILE_TOOL: ToolDefinition = {
       limit: {
         type: 'number',
         description: '最多读取的行数（可选）',
+      },
+      offset: {
+        type: 'number',
+        description: '起始行偏移（0-based，可选）',
       },
     },
     required: ['path'],
@@ -73,6 +91,7 @@ export const WRITE_FILE_TOOL: ToolDefinition = {
 - 创建新文件或完全覆盖现有文件
 - 自动创建父目录
 - 支持任何文本内容
+- 敏感文件（.env、*.key 等）受保护
 
 使用建议:
 - 用于创建新文件
@@ -103,11 +122,13 @@ export const EDIT_FILE_TOOL: ToolDefinition = {
 - 精确匹配并替换文本
 - 保持文件其他部分不变
 - 支持多行文本替换
+- 支持 replace_all 模式替换所有匹配
+- 敏感文件（.env、*.key 等）受保护
 
 关键要求:
 - old_text 必须与文件中的内容**完全匹配**（包括空格和换行）
 - 如果匹配失败，检查空格、缩进和换行符
-- 对于同一文件的多处修改，可以多次调用此工具`,
+- 默认只替换第一处匹配；使用 replace_all 替换全部`,
   input_schema: {
     type: 'object',
     properties: {
@@ -122,6 +143,10 @@ export const EDIT_FILE_TOOL: ToolDefinition = {
       new_text: {
         type: 'string',
         description: '替换后的新文本',
+      },
+      replace_all: {
+        type: 'boolean',
+        description: '是否替换所有匹配（可选，默认 false）',
       },
     },
     required: ['path', 'old_text', 'new_text'],
@@ -181,6 +206,8 @@ export const GREP_TOOL: ToolDefinition = {
 - 支持正则表达式搜索
 - 可显示匹配上下文
 - 多种输出模式
+- 支持多行匹配和文件类型过滤
+- 支持分页（offset/head_limit）
 
 输出模式:
 - files_with_matches: 只返回匹配的文件名（默认，推荐用于初步搜索）
@@ -226,6 +253,22 @@ export const GREP_TOOL: ToolDefinition = {
       maxResults: {
         type: 'number',
         description: '最大匹配数（可选，默认100）',
+      },
+      multiline: {
+        type: 'boolean',
+        description: '是否启用多行匹配模式（可选，默认 false）。启用后 . 匹配换行符。',
+      },
+      type: {
+        type: 'string',
+        description: '文件类型过滤（可选，如 "js", "ts", "py", "rust", "go", "java"）',
+      },
+      head_limit: {
+        type: 'number',
+        description: '限制输出的条目数（可选，默认不限制）',
+      },
+      offset: {
+        type: 'number',
+        description: '跳过前 N 条结果（可选，默认 0）',
       },
     },
     required: ['pattern'],
@@ -296,7 +339,7 @@ export const ASK_USER_QUESTION_TOOL: ToolDefinition = {
   },
 };
 
-// 8. Todo 管理工具
+// 8. Todo 管理工具（兼容别名）
 export const TODO_WRITE_TOOL: ToolDefinition = {
   name: 'TodoWrite',
   description: `管理任务列表，跟踪多步骤任务的进度。
@@ -354,7 +397,7 @@ export const TODO_WRITE_TOOL: ToolDefinition = {
   },
 };
 
-// 9. 技能加载工具 (Production-grade)
+// 9. 技能加载工具
 export const SKILL_TOOL: ToolDefinition = {
   name: 'Skill',
   description: `执行技能或自定义命令。
@@ -460,6 +503,9 @@ export const WEB_FETCH_TOOL: ToolDefinition = {
 - 支持 HTTP/HTTPS 协议
 - 自动处理 HTML 转换
 - 提取主要内容，过滤广告和导航
+- 15 分钟自动缓存
+- 可用 prompt 参数提取特定信息
+- 自动检测跨域重定向
 
 使用场景:
 - 查询在线文档
@@ -475,6 +521,10 @@ export const WEB_FETCH_TOOL: ToolDefinition = {
       url: {
         type: 'string',
         description: '要获取的网页 URL',
+      },
+      prompt: {
+        type: 'string',
+        description: '内容提取提示词（可选）。指定后会用 LLM 从网页内容中提取所需信息。',
       },
       timeout: {
         type: 'number',
@@ -527,6 +577,55 @@ export const WEB_SEARCH_TOOL: ToolDefinition = {
   },
 };
 
+// 14. TaskOutput 工具（获取后台任务输出）
+export const TASK_OUTPUT_TOOL: ToolDefinition = {
+  name: 'TaskOutput',
+  description: `获取后台任务的输出结果。
+
+功能:
+- 获取通过 bash(run_in_background=true) 启动的后台任务的输出
+- 支持阻塞等待和非阻塞查询
+- 返回任务状态、输出和退出码`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      task_id: {
+        type: 'string',
+        description: '后台任务 ID',
+      },
+      block: {
+        type: 'boolean',
+        description: '是否阻塞等待完成（可选，默认 true）',
+      },
+      timeout: {
+        type: 'number',
+        description: '最大等待时间（毫秒，可选，默认 30000）',
+      },
+    },
+    required: ['task_id'],
+  },
+};
+
+// 15. TaskStop 工具（停止后台任务）
+export const TASK_STOP_TOOL: ToolDefinition = {
+  name: 'TaskStop',
+  description: `停止正在运行的后台任务。
+
+功能:
+- 通过任务 ID 停止后台任务
+- 返回操作是否成功`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      task_id: {
+        type: 'string',
+        description: '要停止的后台任务 ID',
+      },
+    },
+    required: ['task_id'],
+  },
+};
+
 /**
  * 创建 Task 工具定义（动态生成描述）
  */
@@ -541,6 +640,7 @@ function createTaskTool(): ToolDefinition {
 - 子代理在隔离的上下文中运行
 - 不会看到父对话的历史
 - 自动选择合适的工具集
+- 支持后台运行和恢复
 
 子代理类型:
 ${agentDescriptions}
@@ -552,6 +652,9 @@ ${agentDescriptions}
   例: "设计数据库迁移策略"
 - **code**: 实现功能或修复 bug
   例: "实现用户注册表单"
+- **bash**: 仅执行 bash 命令
+- **guide**: 查找文档和指南
+- **general**: 通用任务
 
 使用建议:
 - 对于文件搜索任务，优先使用 Task(explore) 以减少上下文
@@ -570,8 +673,20 @@ ${agentDescriptions}
         },
         agent_type: {
           type: 'string',
-          enum: ['explore', 'code', 'plan'],
+          enum: ['explore', 'code', 'plan', 'bash', 'guide', 'general'],
           description: '子代理类型',
+        },
+        model: {
+          type: 'string',
+          description: '指定使用的模型（可选，默认继承父代理）',
+        },
+        run_in_background: {
+          type: 'boolean',
+          description: '是否在后台运行（可选，默认 false）。后台运行返回 sessionId。',
+        },
+        resume: {
+          type: 'string',
+          description: '恢复之前的 Agent 会话 ID（可选）。传入后续消息继续之前的对话。',
         },
       },
       required: ['description', 'prompt', 'agent_type'],
@@ -579,8 +694,133 @@ ${agentDescriptions}
   };
 }
 
-// 14. 子代理任务工具
+// 16. 子代理任务工具
 export const TASK_TOOL: ToolDefinition = createTaskTool();
+
+// 17. TaskCreate 工具
+export const TASK_CREATE_TOOL: ToolDefinition = {
+  name: 'TaskCreate',
+  description: `创建新任务，用于跟踪多步骤工作进度。
+
+使用场景:
+- 复杂任务需要 3 个以上步骤时
+- 需要向用户展示进度时
+- 收到多个子任务时
+
+注意: 单一简单任务不需要创建 Task。`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      subject: {
+        type: 'string',
+        description: '任务标题（祈使句，如"修复登录 bug"）',
+      },
+      description: {
+        type: 'string',
+        description: '任务详细描述',
+      },
+      activeForm: {
+        type: 'string',
+        description: '进行中显示的文本（现在进行时，如"正在修复登录 bug"）',
+      },
+      owner: {
+        type: 'string',
+        description: '任务负责人（可选）',
+      },
+      metadata: {
+        type: 'object',
+        description: '附加元数据（可选）',
+      },
+    },
+    required: ['subject', 'description'],
+  },
+};
+
+// 18. TaskGet 工具
+export const TASK_GET_TOOL: ToolDefinition = {
+  name: 'TaskGet',
+  description: `获取任务详情。返回任务的完整信息，包括描述、状态和依赖关系。`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      taskId: {
+        type: 'string',
+        description: '任务 ID',
+      },
+    },
+    required: ['taskId'],
+  },
+};
+
+// 19. TaskUpdate 工具
+export const TASK_UPDATE_TOOL: ToolDefinition = {
+  name: 'TaskUpdate',
+  description: `更新任务状态或内容。
+
+状态流转: pending → in_progress → completed
+使用 status="deleted" 永久删除任务。
+
+重要:
+- 开始工作前标记为 in_progress
+- 完全完成后才标记为 completed
+- 遇到错误时保持 in_progress`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      taskId: {
+        type: 'string',
+        description: '任务 ID',
+      },
+      subject: {
+        type: 'string',
+        description: '新标题（可选）',
+      },
+      description: {
+        type: 'string',
+        description: '新描述（可选）',
+      },
+      status: {
+        type: 'string',
+        enum: ['pending', 'in_progress', 'completed', 'deleted'],
+        description: '新状态（可选）',
+      },
+      activeForm: {
+        type: 'string',
+        description: '进行中显示文本（可选）',
+      },
+      owner: {
+        type: 'string',
+        description: '任务负责人（可选）',
+      },
+      metadata: {
+        type: 'object',
+        description: '元数据（合并到现有数据，设为 null 删除键）',
+      },
+      addBlocks: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '此任务阻塞的任务 ID 列表（可选）',
+      },
+      addBlockedBy: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '阻塞此任务的任务 ID 列表（可选）',
+      },
+    },
+    required: ['taskId'],
+  },
+};
+
+// 20. TaskList 工具
+export const TASK_LIST_TOOL: ToolDefinition = {
+  name: 'TaskList',
+  description: `列出所有任务。返回任务摘要列表，包含 ID、标题、状态和依赖信息。`,
+  input_schema: {
+    type: 'object',
+    properties: {},
+    required: [],
+  },
+};
 
 // 基础工具列表（不含 Task，用于子代理）
 export const BASE_TOOLS: ToolDefinition[] = [
@@ -597,6 +837,13 @@ export const BASE_TOOLS: ToolDefinition[] = [
   EXIT_PLAN_MODE_TOOL,
   WEB_FETCH_TOOL,
   WEB_SEARCH_TOOL,
+  TASK_OUTPUT_TOOL,
+  TASK_STOP_TOOL,
+  TASK_CREATE_TOOL,
+  TASK_GET_TOOL,
+  TASK_UPDATE_TOOL,
+  TASK_LIST_TOOL,
+  ...getMCPBuiltinTools(),
 ];
 
 // 所有工具列表（含 Task，用于主代理）
@@ -604,6 +851,16 @@ export const ALL_TOOLS: ToolDefinition[] = [
   ...BASE_TOOLS,
   TASK_TOOL,
 ];
+
+/**
+ * 动态获取所有工具（包含 MCP 工具等动态工具）
+ */
+export function getAllTools(extraTools?: ToolDefinition[]): ToolDefinition[] {
+  if (extraTools && extraTools.length > 0) {
+    return [...ALL_TOOLS, ...extraTools];
+  }
+  return ALL_TOOLS;
+}
 
 /**
  * 根据代理类型获取工具
