@@ -5,6 +5,7 @@
 import fs from 'fs-extra';
 import path from 'node:path';
 import { safePath, truncateOutput } from '../../services/system/security.js';
+import { validateFileAccess } from '../../services/system/sensitiveFiles.js';
 
 const MAX_FILE_SIZE = 50 * 1024; // 50KB 限制（用于读取）
 
@@ -14,7 +15,8 @@ const MAX_FILE_SIZE = 50 * 1024; // 50KB 限制（用于读取）
 export async function runRead(
   workdir: string,
   filePath: string,
-  limit?: number
+  limit?: number,
+  offset?: number
 ): Promise<string> {
   try {
     // 安全路径检查
@@ -35,24 +37,28 @@ export async function runRead(
     const content = await fs.readFile(fullPath, 'utf-8');
 
     // 按行分割
-    const lines = content.split('\n');
+    const allLines = content.split('\n');
+
+    // 应用 offset
+    const startLine = offset && offset > 0 ? offset : 0;
+    const lines = allLines.slice(startLine);
 
     // 如果指定了行数限制
     if (limit && limit > 0) {
       const limitedLines = lines.slice(0, limit);
       const result = limitedLines
-        .map((line, index) => `${index + 1}→${line}`)
+        .map((line, index) => `${startLine + index + 1}→${line}`)
         .join('\n');
 
       if (lines.length > limit) {
-        return `${result}\n\n[显示前 ${limit} 行，共 ${lines.length} 行]`;
+        return `${result}\n\n[显示第 ${startLine + 1}-${startLine + limit} 行，共 ${allLines.length} 行]`;
       }
 
       return result;
     }
 
     // 完整内容（带行号）
-    const numbered = lines.map((line, index) => `${index + 1}→${line}`).join('\n');
+    const numbered = lines.map((line, index) => `${startLine + index + 1}→${line}`).join('\n');
 
     // 截断过大的文件
     return truncateOutput(numbered, MAX_FILE_SIZE);
@@ -73,6 +79,9 @@ export async function runWrite(
   content: string
 ): Promise<string> {
   try {
+    // 敏感文件保护
+    validateFileAccess(workdir, filePath, 'write');
+
     // 安全路径检查
     const fullPath = safePath(workdir, filePath);
 
@@ -102,9 +111,13 @@ export async function runEdit(
   workdir: string,
   filePath: string,
   oldText: string,
-  newText: string
+  newText: string,
+  replaceAll: boolean = false
 ): Promise<string> {
   try {
+    // 敏感文件保护
+    validateFileAccess(workdir, filePath, 'edit');
+
     // 安全路径检查
     const fullPath = safePath(workdir, filePath);
 
@@ -124,12 +137,14 @@ export async function runEdit(
     // 计算匹配次数
     const matches = content.split(oldText).length - 1;
 
-    if (matches > 1) {
-      return `错误: old_text 在文件中出现 ${matches} 次。请提供更具体的文本以确保唯一匹配。`;
+    if (matches > 1 && !replaceAll) {
+      return `错误: old_text 在文件中出现 ${matches} 次。请提供更具体的文本以确保唯一匹配，或使用 replace_all 参数替换所有匹配。`;
     }
 
     // 替换文本
-    const newContent = content.replace(oldText, newText);
+    const newContent = replaceAll
+      ? content.replaceAll(oldText, newText)
+      : content.replace(oldText, newText);
 
     // 写回文件
     await fs.writeFile(fullPath, newContent, 'utf-8');
