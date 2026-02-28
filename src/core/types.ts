@@ -87,4 +87,4 @@ export interface LLMResponse {
 export type Provider = 'anthropic' | 'openai' | 'gemini';
 
 // 子代理类型
-export type AgentType = 'explore' | 'code' | 'plan';
+export type AgentType = 'explore' | 'code' | 'plan' | 'bash' | 'guide' | 'general';

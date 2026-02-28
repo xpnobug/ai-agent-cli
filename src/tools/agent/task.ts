@@ -1,5 +1,6 @@
 /**
  * 子代理任务执行器
+ * 支持模型选择、后台运行、会话恢复
  */
 
 import type { AgentType, Message, ToolDefinition, ExecuteToolFunc } from '../../core/types.js';
@@ -8,6 +9,78 @@ import { agentLoop } from '../../core/loop.js';
 import { getToolsForAgentType } from '../definitions.js';
 import { createSubagentSystemPrompt } from '../../core/prompts.js';
 import { getTheme } from '../../ui/theme.js';
+import { getAgentConfig } from '../../core/agents.js';
+
+/**
+ * 子代理任务选项
+ */
+export interface TaskOptions {
+  model?: string;
+  runInBackground?: boolean;
+  sessionId?: string; // 恢复之前的会话
+}
+
+/**
+ * Agent 会话（用于恢复）
+ */
+interface AgentSession {
+  id: string;
+  agentType: AgentType;
+  history: Message[];
+  status: 'running' | 'completed' | 'failed';
+  result?: string;
+  model?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Agent 会话存储
+ */
+class AgentSessionStore {
+  private sessions = new Map<string, AgentSession>();
+  private nextId = 1;
+
+  create(agentType: AgentType, model?: string): AgentSession {
+    const id = `agent-${this.nextId++}`;
+    const session: AgentSession = {
+      id,
+      agentType,
+      history: [],
+      status: 'running',
+      model,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  get(id: string): AgentSession | undefined {
+    return this.sessions.get(id);
+  }
+
+  update(id: string, updates: Partial<AgentSession>): void {
+    const session = this.sessions.get(id);
+    if (session) {
+      Object.assign(session, updates, { updatedAt: Date.now() });
+    }
+  }
+
+  list(): AgentSession[] {
+    return Array.from(this.sessions.values());
+  }
+}
+
+// 单例
+let sessionStore: AgentSessionStore | null = null;
+
+function getSessionStore(): AgentSessionStore {
+  if (!sessionStore) {
+    sessionStore = new AgentSessionStore();
+  }
+  return sessionStore;
+}
 
 /**
  * 子代理进度显示
@@ -40,7 +113,7 @@ class SubagentProgress {
    */
   update(toolName: string, count: number, elapsed: number): void {
     this.toolCount = count;
-    
+
     // 清除当前行并重写
     process.stdout.write('\r\x1b[K');
     process.stdout.write(
@@ -87,7 +160,80 @@ export async function runTask(
   adapter: ProtocolAdapter,
   _systemPrompt: string,
   _tools: ToolDefinition[],
-  _executeTool: ExecuteToolFunc
+  _executeTool: ExecuteToolFunc,
+  taskOptions: TaskOptions = {}
+): Promise<string> {
+  const { model, runInBackground = false, sessionId } = taskOptions;
+  const store = getSessionStore();
+  const agentConfig = getAgentConfig(agentType);
+
+  // 后台运行模式
+  if (runInBackground) {
+    const session = store.create(agentType, model);
+
+    // 异步执行，不等待完成
+    executeSubagent(
+      description, prompt, agentType, workdir, adapter,
+      _systemPrompt, _tools, _executeTool, agentConfig, model
+    ).then((result) => {
+      store.update(session.id, {
+        status: 'completed',
+        result,
+      });
+    }).catch((error: unknown) => {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      store.update(session.id, {
+        status: 'failed',
+        result: `错误: ${errorMsg}`,
+      });
+    });
+
+    return JSON.stringify({
+      sessionId: session.id,
+      status: 'running',
+      message: `子代理已在后台启动: ${session.id}`,
+    });
+  }
+
+  // 恢复模式
+  if (sessionId) {
+    const session = store.get(sessionId);
+    if (!session) {
+      return `错误: 未找到会话 "${sessionId}"`;
+    }
+
+    if (session.status === 'running') {
+      return `会话 ${sessionId} 仍在运行中...`;
+    }
+
+    if (session.result) {
+      return session.result;
+    }
+
+    return `会话 ${sessionId} 状态: ${session.status}，无结果`;
+  }
+
+  // 前台执行
+  return await executeSubagent(
+    description, prompt, agentType, workdir, adapter,
+    _systemPrompt, _tools, _executeTool, agentConfig, model
+  );
+}
+
+/**
+ * 实际执行子代理逻辑
+ */
+async function executeSubagent(
+  description: string,
+  prompt: string,
+  agentType: AgentType,
+  workdir: string,
+  adapter: ProtocolAdapter,
+  _systemPrompt: string,
+  _tools: ToolDefinition[],
+  _executeTool: ExecuteToolFunc,
+  agentConfig: { maxTokens?: number; maxTurns?: number },
+  _model?: string
 ): Promise<string> {
   const progress = new SubagentProgress(description, agentType);
 
@@ -132,8 +278,8 @@ export async function runTask(
         return subExecutor(toolName, input);
       },
       {
-        maxTokens: 4096,
-        maxTurns: 10, // 子代理最多 10 轮
+        maxTokens: agentConfig.maxTokens || 4096,
+        maxTurns: agentConfig.maxTurns || 10,
         silent: true, // 静默模式，不打印工具调用
         onToolCall: (name, count, elapsed) => {
           progress.update(name, count, elapsed);
