@@ -1,5 +1,5 @@
 /**
- * RequestStatusIndicator - 请求状态指示器（对标 Kode-cli）
+ * RequestStatusIndicator - 请求状态指示器
  * ✱ Thinking… (4s · ↓ 4.4k tokens · thinking)
  */
 
@@ -15,8 +15,8 @@ import {
 
 const CHARACTERS =
   process.platform === 'darwin'
-    ? ['·', '✢', '✳', '∗', '✻', '✽']
-    : ['·', '✢', '*', '∗', '✻', '✽'];
+    ? ['·', '✢', '✳', '✻', '✽']
+    : ['·', '✢', '*', '✻', '✽'];
 
 function getLabel(status: RequestStatus): string {
   switch (status.kind) {

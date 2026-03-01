@@ -44,7 +44,7 @@ export function DynamicArea({
 }: DynamicAreaProps) {
   return (
     <>
-      {/* RequestStatusIndicator — 对标 Kode-cli */}
+      {/* RequestStatusIndicator */}
       {isLoading && !focus && (
         <RequestStatusIndicator getTokenStats={getTokenStats} />
       )}

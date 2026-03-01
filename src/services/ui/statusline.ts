@@ -1,5 +1,5 @@
 /**
- * statusline 配置（对标 Kode-cli）
+ * statusline 配置
  */
 
 import { loadUserConfig, saveUserConfig } from '../config/configStore.js';

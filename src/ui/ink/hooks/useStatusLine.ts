@@ -1,5 +1,5 @@
 /**
- * useStatusLine - 状态栏命令输出（对标 Kode-cli）
+ * useStatusLine - 状态栏命令输出
  */
 
 import { useEffect, useRef, useState } from 'react';

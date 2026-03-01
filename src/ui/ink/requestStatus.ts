@@ -1,5 +1,5 @@
 /**
- * 请求状态管理（对标 Kode-cli）
+ * 请求状态管理
  */
 
 export type RequestStatusKind = 'idle' | 'thinking' | 'streaming' | 'tool';
