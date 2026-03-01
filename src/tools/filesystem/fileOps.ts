@@ -137,6 +137,10 @@ export async function runRead(
   offset?: number
 ): Promise<ToolExecutionResult> {
   try {
+    if (!path.isAbsolute(filePath)) {
+      return buildError('错误: file_path 必须是绝对路径。');
+    }
+
     // 安全路径检查
     const fullPath = safePath(workdir, filePath);
 
@@ -281,6 +285,10 @@ export async function runWrite(
   content: string
 ): Promise<string> {
   try {
+    if (!path.isAbsolute(filePath)) {
+      return '错误: file_path 必须是绝对路径。';
+    }
+
     // 敏感文件保护
     validateFileAccess(workdir, filePath, 'write');
 
@@ -331,6 +339,10 @@ export async function runEdit(
   replaceAll: boolean = false
 ): Promise<string> {
   try {
+    if (!path.isAbsolute(filePath)) {
+      return '错误: file_path 必须是绝对路径。';
+    }
+
     // 敏感文件保护
     validateFileAccess(workdir, filePath, 'edit');
 

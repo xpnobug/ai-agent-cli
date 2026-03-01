@@ -24,7 +24,7 @@ function formatToolMessage(toolName: string, params: Record<string, unknown>): s
     case 'write_file':
     case 'edit_file':
     case 'read_file':
-      return String(params.path || '').slice(0, 160);
+      return String(params.file_path || params.path || '').slice(0, 160);
     default:
       return JSON.stringify(params).slice(0, 160);
   }

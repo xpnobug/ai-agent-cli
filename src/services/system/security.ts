@@ -4,6 +4,7 @@
  */
 
 import path from 'node:path';
+import { homedir } from 'node:os';
 
 /**
  * 危险命令模式列表
@@ -59,19 +60,32 @@ const READ_ONLY_COMMANDS = [
  * 确保路径在工作目录内，防止路径遍历攻击
  */
 export function safePath(workdir: string, filePath: string): string {
-  // 解析绝对路径
-  const resolved = path.resolve(workdir, filePath);
-
-  // 规范化路径
-  const normalizedWorkdir = path.normalize(workdir);
-  const normalizedResolved = path.normalize(resolved);
-
-  // 检查是否在工作目录内
-  if (!normalizedResolved.startsWith(normalizedWorkdir)) {
-    throw new Error(`路径越界: ${filePath} 不在工作目录 ${workdir} 内`);
+  const trimmed = filePath.trim();
+  if (trimmed.includes('..') || trimmed.includes('~')) {
+    throw new Error(`路径非法: ${filePath}`);
   }
 
-  return resolved;
+  const resolved = path.isAbsolute(trimmed)
+    ? path.resolve(trimmed)
+    : path.resolve(workdir, trimmed);
+
+  const normalizedResolved = path.normalize(resolved);
+  const allowedBases = [workdir, homedir(), '/tmp', '/var/tmp']
+    .map((p) => path.resolve(p));
+
+  const isAllowed = allowedBases.some((base) => {
+    const rel = path.relative(base, normalizedResolved);
+    if (!rel || rel === '') return true;
+    if (rel.startsWith('..')) return false;
+    if (path.isAbsolute(rel)) return false;
+    return true;
+  });
+
+  if (!isAllowed) {
+    throw new Error(`路径越界: ${filePath} 不在允许目录内`);
+  }
+
+  return normalizedResolved;
 }
 
 /**

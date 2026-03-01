@@ -64,20 +64,20 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
         case 'read_file':
           result = await runRead(
             workdir,
-            input.path as string,
+            input.file_path as string,
             input.limit as number | undefined,
             input.offset as number | undefined
           );
           break;
 
         case 'write_file':
-          result = await runWrite(workdir, input.path as string, input.content as string);
+          result = await runWrite(workdir, input.file_path as string, input.content as string);
           break;
 
         case 'edit_file':
           result = await runEdit(
             workdir,
-            input.path as string,
+            input.file_path as string,
             input.old_text as string,
             input.new_text as string,
             input.replace_all as boolean | undefined

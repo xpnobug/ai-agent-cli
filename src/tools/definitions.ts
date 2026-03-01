@@ -60,15 +60,16 @@ export const READ_FILE_TOOL: ToolDefinition = {
 - 自动检测文件编码
 
 使用建议:
+- file_path 必须是绝对路径
 - 编辑文件前先读取以了解内容
 - 批量读取多个相关文件以获取上下文
 - 对于大文件，使用 offset + limit 分段读取`,
   input_schema: {
     type: 'object',
     properties: {
-      path: {
+      file_path: {
         type: 'string',
-        description: '文件路径（相对于工作目录）',
+        description: '文件绝对路径',
       },
       limit: {
         type: 'number',
@@ -79,7 +80,7 @@ export const READ_FILE_TOOL: ToolDefinition = {
         description: '起始行号（1-based，可选）',
       },
     },
-    required: ['path'],
+    required: ['file_path'],
   },
 };
 
@@ -95,22 +96,23 @@ export const WRITE_FILE_TOOL: ToolDefinition = {
 - 敏感文件（.env、*.key 等）受保护
 
 使用建议:
+- file_path 必须是绝对路径
 - 用于创建新文件
 - 对于修改现有文件，优先使用 edit_file
 - 写入前确认文件路径正确`,
   input_schema: {
     type: 'object',
     properties: {
-      path: {
+      file_path: {
         type: 'string',
-        description: '文件路径（相对于工作目录）',
+        description: '文件绝对路径',
       },
       content: {
         type: 'string',
         description: '文件内容',
       },
     },
-    required: ['path', 'content'],
+    required: ['file_path', 'content'],
   },
 };
 
@@ -127,15 +129,16 @@ export const EDIT_FILE_TOOL: ToolDefinition = {
 - 敏感文件（.env、*.key 等）受保护
 
 关键要求:
+- file_path 必须是绝对路径
 - old_text 必须与文件中的内容**完全匹配**（包括空格和换行）
 - 如果匹配失败，检查空格、缩进和换行符
 - 默认只替换第一处匹配；使用 replace_all 替换全部`,
   input_schema: {
     type: 'object',
     properties: {
-      path: {
+      file_path: {
         type: 'string',
-        description: '文件路径（相对于工作目录）',
+        description: '文件绝对路径',
       },
       old_text: {
         type: 'string',
@@ -150,7 +153,7 @@ export const EDIT_FILE_TOOL: ToolDefinition = {
         description: '是否替换所有匹配（可选，默认 false）',
       },
     },
-    required: ['path', 'old_text', 'new_text'],
+    required: ['file_path', 'old_text', 'new_text'],
   },
 };
 

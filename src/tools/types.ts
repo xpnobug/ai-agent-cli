@@ -19,20 +19,20 @@ export interface BashInput {
 
 // 文件读取输入
 export interface ReadFileInput {
-  path: string;
+  file_path: string;
   limit?: number;
   offset?: number;
 }
 
 // 文件写入输入
 export interface WriteFileInput {
-  path: string;
+  file_path: string;
   content: string;
 }
 
 // 文件编辑输入
 export interface EditFileInput {
-  path: string;
+  file_path: string;
   old_text: string;
   new_text: string;
 }
