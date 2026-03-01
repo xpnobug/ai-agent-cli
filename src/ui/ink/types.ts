@@ -21,7 +21,7 @@ export type CompletedItem =
   | { id: string; type: 'banner'; config: BannerConfig }
   | { id: string; type: 'user_message'; text: string }
   | { id: string; type: 'ai_message'; text: string; elapsed?: number }
-  | { id: string; type: 'tool_call'; name: string; detail?: string; result?: string; isError?: boolean }
+  | { id: string; type: 'tool_call'; name: string; detail?: string; result?: string; isError?: boolean; mergedCount?: number }
   | { id: string; type: 'system'; level: 'success' | 'error' | 'warning' | 'info'; text: string }
   | { id: string; type: 'divider' };
 
@@ -73,7 +73,7 @@ export type CompletedItemInput =
   | { type: 'banner'; config: BannerConfig }
   | { type: 'user_message'; text: string }
   | { type: 'ai_message'; text: string; elapsed?: number }
-  | { type: 'tool_call'; name: string; detail?: string; result?: string; isError?: boolean }
+  | { type: 'tool_call'; name: string; detail?: string; result?: string; isError?: boolean; mergedCount?: number }
   | { type: 'system'; level: 'success' | 'error' | 'warning' | 'info'; text: string }
   | { type: 'divider' };
 

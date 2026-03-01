@@ -61,6 +61,7 @@ export function CompletedItemView({ item }: CompletedItemViewProps) {
             detail={item.detail}
             result={item.result}
             isError={item.isError}
+            mergedCount={item.mergedCount}
           />
         </Box>
       );

@@ -19,6 +19,7 @@ import type { HierarchicalAbortController } from './abort.js';
 import type { AgentEvent } from './agentEvent.js';
 import { getReminderManager } from './reminder.js';
 import { withRetry } from '../utils/retry.js';
+import { DEFAULTS } from './constants.js';
 
 /**
  * Generator 版代理循环配置
@@ -176,21 +177,37 @@ export async function* agentLoopGenerator(
       let streamError: Error | null = null;
 
       // 竞速：持续 drain 事件队列，直到 stream 完成
-      while (true) {
-        // 检查 stream 是否已完成
-        const raceResult = await Promise.race([
-          streamPromise.then((r) => ({ done: true as const, result: r })),
-          eventQueue.waitForEvents().then(() => ({ done: false as const })),
-        ]);
+      // 请求级超时
+      let streamTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        streamTimeoutTimer = setTimeout(() => {
+          reject(new Error('API_STREAM_TIMEOUT: 流式请求超时（5分钟无响应）'));
+        }, DEFAULTS.apiStreamTimeout);
+      });
 
-        // 先 drain 队列中已有的事件
-        for await (const event of eventQueue.drain()) {
-          yield event;
+      try {
+        while (true) {
+          // 检查 stream 是否已完成
+          const raceResult = await Promise.race([
+            streamPromise.then((r) => ({ done: true as const, result: r })),
+            eventQueue.waitForEvents().then(() => ({ done: false as const })),
+            timeoutPromise,
+          ]);
+
+          // 先 drain 队列中已有的事件
+          for await (const event of eventQueue.drain()) {
+            yield event;
+          }
+
+          if (raceResult.done) {
+            streamResult = raceResult.result;
+            break;
+          }
         }
-
-        if (raceResult.done) {
-          streamResult = raceResult.result;
-          break;
+      } finally {
+        if (streamTimeoutTimer) {
+          clearTimeout(streamTimeoutTimer);
+          streamTimeoutTimer = null;
         }
       }
 
@@ -236,14 +253,12 @@ export async function* agentLoopGenerator(
       const isFinalResponse =
         toolCalls.length === 0 || (stopReason !== 'tool_use' && stopReason !== 'tool_calls');
 
-      // 6. 流式文本完成事件
+      // 6. 流式文本完成事件（始终 yield，避免跨轮泄漏）
       if (!silent && streamedText) {
-        if (isFinalResponse) {
-          yield {
-            type: 'stream_done',
-            fullText: streamedText,
-          };
-        }
+        yield {
+          type: 'stream_done',
+          fullText: streamedText,
+        };
       }
 
       // 7. 将助手消息添加到历史
@@ -285,29 +300,28 @@ export async function* agentLoopGenerator(
               });
             }
 
-            // 通过 Promise 等待权限决策
-            const confirmation = await new Promise<'allow' | 'deny' | 'always'>((resolve) => {
-              // 使用同步方式：先 enqueue，然后在外层 yield
-              // 但 generator 不支持在 Promise 回调中 yield，
-              // 所以我们直接 yield permission_request 事件
-              // 这里需要特殊处理
-              eventQueue.enqueue({
-                type: 'permission_request',
-                toolName: toolCall.name,
-                params: toolCall.input,
-                reason: checkResult.reason,
-                resolve,
-              });
+            // 1. 创建 Promise，捕获 resolve
+            let confirmResolve!: (r: 'allow' | 'deny' | 'always') => void;
+            const confirmationPromise = new Promise<'allow' | 'deny' | 'always'>((resolve) => {
+              confirmResolve = resolve;
             });
 
-            // drain 权限请求事件（让消费者处理）
+            // 2. 入队事件（携带 resolve）
+            eventQueue.enqueue({
+              type: 'permission_request',
+              toolName: toolCall.name,
+              params: toolCall.input,
+              reason: checkResult.reason,
+              resolve: confirmResolve,
+            });
+
+            // 3. drain + yield → 消费者收到事件
             for await (const event of eventQueue.drain()) {
               yield event;
             }
 
-            // 等待上面的 Promise resolve（消费者会调用 event.resolve）
-            // 注意：这里的 confirmation 已经是 resolved 的值了
-            // 因为 enqueue + drain + yield 的顺序保证消费者会看到事件并调用 resolve
+            // 4. 消费者处理完后 resolve，此时 await 立即返回
+            const confirmation = await confirmationPromise;
 
             if (confirmation === 'always') {
               permissionManager.setAlwaysAllow(toolCall.name);

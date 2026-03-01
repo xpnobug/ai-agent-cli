@@ -64,6 +64,15 @@ export class AppStore {
     }));
   }
 
+  /**
+   * 替换最后一个 completed item（用于工具调用合并）
+   */
+  replaceLastCompleted(item: CompletedItem): void {
+    this.setState((prev) => ({
+      completedItems: [...prev.completedItems.slice(0, -1), item],
+    }));
+  }
+
   // ─── 正交状态操作 ───
 
   setLoading(loading: LoadingState): void {
@@ -85,6 +94,24 @@ export class AppStore {
   /** 清除所有动态状态回到输入模式 */
   resetToInput(): void {
     this.setState(() => ({
+      phase: { type: 'input' as const },
+      loading: null,
+      streaming: null,
+      focus: undefined,
+    }));
+  }
+
+  /**
+   * 原子操作：添加完成项 + 清除所有动态状态
+   *
+   * 避免 addCompleted + resetToInput 两次 setState 导致中间渲染帧
+   * （Ink Static 会在第一帧永久写入终端，第二帧才清除 StreamingText，
+   * 造成同一内容同时以渲染后和原始文本双重显示）
+   */
+  addCompletedAndReset(item: CompletedItemInput): void {
+    const fullItem = { ...item, id: generateId() } as CompletedItem;
+    this.setState((prev) => ({
+      completedItems: [...prev.completedItems, fullItem],
       phase: { type: 'input' as const },
       loading: null,
       streaming: null,

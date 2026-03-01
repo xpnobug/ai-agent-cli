@@ -112,6 +112,16 @@ export class InkUIController implements UIController {
   }
 
   showThinking(): void {
+    // 清除上一轮可能残留的流式状态
+    if (this._currentStreamText || this._streamFlushTimer) {
+      if (this._streamFlushTimer) {
+        clearTimeout(this._streamFlushTimer);
+        this._streamFlushTimer = null;
+      }
+      this._currentStreamText = '';
+      this.store.setStreaming(null);
+    }
+
     this.store.setLoading({
       mode: 'thinking',
       startTime: Date.now(),
@@ -156,24 +166,20 @@ export class InkUIController implements UIController {
       this._streamFlushTimer = null;
     }
 
-    this.store.addCompleted({
+    this._currentStreamText = '';
+
+    // 原子操作：同时添加完成项并清除流式状态
+    // 避免两次 setState 导致中间帧 Static 和 StreamingText 同时渲染
+    this.store.addCompletedAndReset({
       type: 'ai_message',
       text: fullText,
     });
-
-    this._currentStreamText = '';
-    this.store.resetToInput();
   }
 
   showToolStart(toolName: string, input?: Record<string, unknown>): void {
-    // 对 Bash 工具，提取 command 参数作为 detail
     let detail: string | undefined;
     if (input) {
-      if (toolName.toLowerCase() === 'bash' && input.command) {
-        detail = String(input.command).slice(0, 80);
-      } else {
-        detail = JSON.stringify(input).slice(0, 50);
-      }
+      detail = this._summarizeToolInput(toolName, input);
     }
     this._currentToolDetail = detail;
     this.store.setLoading({
@@ -185,16 +191,84 @@ export class InkUIController implements UIController {
     });
   }
 
+  /**
+   * 从工具输入中提取可读摘要
+   *
+   * Bash → command
+   * 文件操作 → file_path / path
+   * 搜索 → pattern / query
+   * 数组参数 → "N items"
+   */
+  private _summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
+    // Bash：显示命令
+    if (toolName.toLowerCase() === 'bash' && input.command) {
+      return String(input.command).slice(0, 80);
+    }
+
+    // 文件路径类参数
+    for (const key of ['file_path', 'path', 'relative_path']) {
+      if (input[key] && typeof input[key] === 'string') {
+        return String(input[key]).slice(0, 80);
+      }
+    }
+
+    // 搜索/匹配类参数
+    for (const key of ['pattern', 'query', 'glob', 'command']) {
+      if (input[key] && typeof input[key] === 'string') {
+        return String(input[key]).slice(0, 60);
+      }
+    }
+
+    // 数组参数 → 显示数量（如 TodoWrite 的 todos）
+    for (const [key, value] of Object.entries(input)) {
+      if (Array.isArray(value)) {
+        return `${value.length} ${key}`;
+      }
+    }
+
+    // 文本内容类参数
+    for (const key of ['content', 'text', 'description']) {
+      if (input[key] && typeof input[key] === 'string') {
+        return String(input[key]).slice(0, 60);
+      }
+    }
+
+    // 兜底：key=value 摘要
+    const keys = Object.keys(input);
+    if (keys.length === 1) {
+      const val = input[keys[0]!];
+      if (typeof val === 'string') return val.slice(0, 60);
+    }
+    return keys.join(', ');
+  }
+
   showToolResult(toolName: string, result: string, _input?: Record<string, unknown>): void {
     // 保留多行结果，由 ToolCallView 负责截断展示
     const maxChars = 500;
     const truncated = result.length > maxChars ? result.slice(0, maxChars) : result;
-    this.store.addCompleted({
-      type: 'tool_call',
-      name: toolName,
-      detail: this._currentToolDetail,
-      result: truncated,
-    });
+
+    // 尝试合并连续同名工具调用（如多个 read_file / Glob）
+    const items = this.store.getState().completedItems;
+    const lastItem = items[items.length - 1];
+
+    if (lastItem?.type === 'tool_call' && lastItem.name === toolName && !lastItem.isError) {
+      const count = (lastItem.mergedCount || 1) + 1;
+      this.store.replaceLastCompleted({
+        ...lastItem,
+        mergedCount: count,
+        // 合并后隐藏个别 detail 和 result
+        detail: undefined,
+        result: undefined,
+      });
+    } else {
+      this.store.addCompleted({
+        type: 'tool_call',
+        name: toolName,
+        detail: this._currentToolDetail,
+        result: truncated,
+      });
+    }
+
     this._currentToolDetail = undefined;
   }
 

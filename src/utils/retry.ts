@@ -43,6 +43,7 @@ const RETRYABLE_ERROR_PATTERNS = [
   'too_many_requests',
   'capacity',
   'temporarily_unavailable',
+  'API_STREAM_TIMEOUT',
 ];
 
 /**

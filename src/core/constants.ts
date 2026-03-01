@@ -72,6 +72,7 @@ export const DEFAULTS = {
   retryInitialDelay: 1000,   // 重试初始延迟（毫秒）
   retryMaxDelay: 30000,      // 重试最大延迟（毫秒）
   retryBackoffMultiplier: 2, // 退避倍数
+  apiStreamTimeout: 300000,  // API 流式请求超时：5 分钟
 };
 
 /**
