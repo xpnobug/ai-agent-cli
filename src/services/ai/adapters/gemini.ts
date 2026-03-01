@@ -6,6 +6,7 @@ import { GoogleGenerativeAI, GenerativeModel, Content, Part, SchemaType } from '
 import type { Message, ToolDefinition, ToolResult, LLMResponse, ContentBlock } from '../../../core/types.js';
 import { ProtocolAdapter } from './base.js';
 import type { StreamCallbacks, StreamResult } from './base.js';
+import { toolResultContentToText } from '../../../core/toolResult.js';
 
 export class GeminiAdapter extends ProtocolAdapter {
   private client!: GoogleGenerativeAI;
@@ -85,7 +86,7 @@ export class GeminiAdapter extends ProtocolAdapter {
               functionResponse: {
                 name: block.name || 'unknown',
                 response: {
-                  content: block.content,
+                  content: toolResultContentToText(block.content),
                 },
               },
             });
@@ -226,7 +227,7 @@ export class GeminiAdapter extends ProtocolAdapter {
               functionResponse: {
                 name: block.name || 'unknown',
                 response: {
-                  content: block.content,
+                  content: toolResultContentToText(block.content),
                 },
               },
             });

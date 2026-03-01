@@ -5,6 +5,7 @@
 
 import type { Message } from './types.js';
 import type { ProtocolAdapter } from '../services/ai/adapters/base.js';
+import { toolResultContentToText } from './toolResult.js';
 
 /**
  * 压缩配置
@@ -216,7 +217,7 @@ export class ContextCompressor {
           } else if (block.type === 'tool_use') {
             totalChars += JSON.stringify(block.input).length;
           } else if (block.type === 'tool_result') {
-            totalChars += block.content.length;
+            totalChars += toolResultContentToText(block.content).length;
           }
         }
       }

@@ -67,6 +67,14 @@ export function ToolResultView({ name, content, isError, input }: ToolResultView
   if (isReadFile && !isError) {
     const cleaned = stripLineNumbers(stripReadFileSummary(content));
     const contentWithFallback = cleaned.trim() ? cleaned : '(No content)';
+    if (contentWithFallback === 'Read image' || contentWithFallback === 'Read pdf') {
+      return (
+        <Text>
+          &nbsp;&nbsp;{UI_SYMBOLS.toolOutput} &nbsp;
+          <Text dimColor>{contentWithFallback}</Text>
+        </Text>
+      );
+    }
     const lines = contentWithFallback.split('\n');
     const shownLines = lines
       .slice(0, MAX_READ_FILE_LINES)

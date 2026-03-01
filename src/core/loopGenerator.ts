@@ -21,6 +21,7 @@ import { getReminderManager } from './reminder.js';
 import { withRetry } from '../utils/retry.js';
 import { DEFAULTS, TOOL_REJECT_MESSAGE } from './constants.js';
 import { getCommandSubcommandPrefix } from './commandPrefix.js';
+import { normalizeToolExecutionResult, toolResultContentToText } from './toolResult.js';
 
 /**
  * Generator 版代理循环配置
@@ -301,6 +302,7 @@ export async function* agentLoopGenerator(
                 tool_use_id: toolCall.id,
                 content: `权限被拒绝: ${checkResult.reason || '操作不被允许'}`,
                 is_error: true,
+                name: toolCall.name,
               },
             ];
             const toolResultsMessage = adapter.formatToolResults(toolResults);
@@ -310,7 +312,7 @@ export async function* agentLoopGenerator(
                 type: 'tool_result',
                 toolUseId: toolCall.id,
                 toolName: toolCall.name,
-                result: toolResults[0]!.content,
+                result: toolResultContentToText(toolResults[0]!.content),
                 isError: true,
               });
               for await (const event of eventQueue.drain()) {
@@ -386,6 +388,7 @@ export async function* agentLoopGenerator(
                   tool_use_id: toolCall.id,
                   content: TOOL_REJECT_MESSAGE,
                   is_error: true,
+                  name: toolCall.name,
                 },
               ];
               const toolResultsMessage = adapter.formatToolResults(toolResults);
@@ -447,18 +450,17 @@ export async function* agentLoopGenerator(
           }
 
           // 执行工具
-          const result = await executeTool(toolCall.name, toolCall.input);
+          const rawResult = await executeTool(toolCall.name, toolCall.input);
+          const result = normalizeToolExecutionResult(rawResult);
 
           // PostToolUse Hook
           if (hookManager?.hasHooksFor('PostToolUse')) {
-            await hookManager.emit('PostToolUse', {
-              toolName: toolCall.name,
-              toolInput: toolCall.input,
-              toolOutput: result,
-            });
+              await hookManager.emit('PostToolUse', {
+                toolName: toolCall.name,
+                toolInput: toolCall.input,
+                toolOutput: result.uiContent,
+              });
           }
-
-          const isError = result.startsWith('错误:') || result.startsWith('Error:');
 
           // 工具结果事件
           if (!silent) {
@@ -466,15 +468,16 @@ export async function* agentLoopGenerator(
               type: 'tool_result',
               toolUseId: toolCall.id,
               toolName: toolCall.name,
-              result,
-              isError,
+              result: result.uiContent,
+              isError: result.isError,
             });
           }
 
           return {
             tool_use_id: toolCall.id,
-            content: result,
-            is_error: isError,
+            content: result.content,
+            is_error: result.isError,
+            name: toolCall.name,
           };
         } catch (error: unknown) {
           const errorMsg = error instanceof Error ? error.message : String(error);
@@ -502,6 +505,7 @@ export async function* agentLoopGenerator(
             tool_use_id: toolCall.id,
             content: `工具执行失败: ${errorMsg}`,
             is_error: true,
+            name: toolCall.name,
           };
         }
       });

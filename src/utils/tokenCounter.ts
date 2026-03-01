@@ -4,6 +4,7 @@
  */
 
 import type { Message } from '../core/types.js';
+import { toolResultContentToText } from '../core/toolResult.js';
 
 /**
  * 估算文本的 Token 数量
@@ -41,8 +42,8 @@ export function countTokens(messages: Message[]): number {
                 if (block.type === 'text') {
                     total += estimateTokens(block.text);
                 } else if (block.type === 'tool_result') {
-                    // 工具结果也计入 token (content 是 string)
-                    total += estimateTokens(block.content);
+                    // 工具结果也计入 token（可能是多模态）
+                    total += estimateTokens(toolResultContentToText(block.content));
                 }
             }
         }

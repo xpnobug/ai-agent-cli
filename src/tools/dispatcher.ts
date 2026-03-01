@@ -2,7 +2,8 @@
  * 工具分发器 - 路由工具调用到具体实现
  */
 
-import type { ExecuteToolFunc } from '../core/types.js';
+import type { ExecuteToolFunc, ToolExecutionResult } from '../core/types.js';
+import { normalizeToolExecutionResult } from '../core/toolResult.js';
 import { runBash, runTaskOutput, runTaskStop } from './filesystem/bash.js';
 import type { BashOptions } from './filesystem/bash.js';
 import { runRead, runWrite, runEdit } from './filesystem/fileOps.js';
@@ -44,8 +45,9 @@ export interface ToolExecutorConfig {
 export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
   const { workdir, skillLoader, adapter, systemPrompt, tools, agentType, mcpRegistry, abortController } = config;
 
-  return async (toolName: string, input: Record<string, unknown>): Promise<string> => {
+  return async (toolName: string, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
     try {
+      let result: string | ToolExecutionResult;
       switch (toolName) {
         case 'bash': {
           // explore 代理使用只读模式
@@ -55,40 +57,45 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
             timeout: input.timeout as number | undefined,
             description: input.description as string | undefined,
           };
-          return await runBash(workdir, input.command as string, readOnly, bashOptions);
+          result = await runBash(workdir, input.command as string, readOnly, bashOptions);
+          break;
         }
 
         case 'read_file':
-          return await runRead(
+          result = await runRead(
             workdir,
             input.path as string,
             input.limit as number | undefined,
             input.offset as number | undefined
           );
+          break;
 
         case 'write_file':
-          return await runWrite(workdir, input.path as string, input.content as string);
+          result = await runWrite(workdir, input.path as string, input.content as string);
+          break;
 
         case 'edit_file':
-          return await runEdit(
+          result = await runEdit(
             workdir,
             input.path as string,
             input.old_text as string,
             input.new_text as string,
             input.replace_all as boolean | undefined
           );
+          break;
 
         case 'Glob':
-          return await runGlob(
+          result = await runGlob(
             workdir,
             input.pattern as string,
             input.path as string | undefined,
             input.ignore as string[] | undefined,
             input.maxResults as number | undefined
           );
+          break;
 
         case 'Grep':
-          return await runGrep(
+          result = await runGrep(
             workdir,
             input.pattern as string,
             input.path as string | undefined,
@@ -103,70 +110,85 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
             input.head_limit as number | undefined,
             input.offset as number | undefined
           );
+          break;
 
         case 'AskUserQuestion':
-          return await runAskUserQuestion(input.questions as any[]);
+          result = await runAskUserQuestion(input.questions as any[]);
+          break;
 
         case 'TodoWrite':
-          return await runTodoWrite(input.todos as any[]);
+          result = await runTodoWrite(input.todos as any[]);
+          break;
 
         case 'TaskCreate':
-          return runTaskCreate(input);
+          result = runTaskCreate(input);
+          break;
 
         case 'TaskGet':
-          return runTaskGet(input.taskId as string);
+          result = runTaskGet(input.taskId as string);
+          break;
 
         case 'TaskUpdate':
-          return runTaskUpdate(input);
+          result = runTaskUpdate(input);
+          break;
 
         case 'TaskList':
-          return runTaskList();
+          result = runTaskList();
+          break;
 
         case 'Skill':
-          return await runSkillLegacy(skillLoader, input.skill as string);
+          result = await runSkillLegacy(skillLoader, input.skill as string);
+          break;
 
         case 'EnterPlanMode':
-          return await runEnterPlanMode(input.taskDescription as string, workdir);
+          result = await runEnterPlanMode(input.taskDescription as string, workdir);
+          break;
 
         case 'ExitPlanMode':
-          return await runExitPlanMode(workdir);
+          result = await runExitPlanMode(workdir);
+          break;
 
         case 'WebFetch':
-          return await runWebFetch(
+          result = await runWebFetch(
             input.url as string,
             input.timeout as number | undefined,
             input.maxLength as number | undefined,
             input.prompt as string | undefined,
             adapter
           );
+          break;
 
         case 'WebSearch':
-          return await runWebSearch(
+          result = await runWebSearch(
             input.query as string,
             input.maxResults as number | undefined,
             input.timeout as number | undefined
           );
+          break;
 
         case 'TaskOutput':
-          return await runTaskOutput(
+          result = await runTaskOutput(
             input.task_id as string,
             input.block as boolean | undefined,
             input.timeout as number | undefined
           );
+          break;
 
         case 'TaskStop':
-          return await runTaskStop(input.task_id as string);
+          result = await runTaskStop(input.task_id as string);
+          break;
 
         case 'Task': {
           // Task 工具需要额外的依赖
           if (!adapter || !systemPrompt || !tools) {
-            return '错误: Task 工具需要完整的代理上下文';
+            result = '错误: Task 工具需要完整的代理上下文';
+            break;
           }
 
           // 为子代理创建子级 AbortController（中断子代理不影响父级）
           const childAbort = abortController?.createChild();
 
-          return await runTask(
+          result = await runTask(
             input.description as string,
             input.prompt as string,
             input.agent_type as AgentType,
@@ -183,36 +205,44 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
               abortController: childAbort,
             }
           );
+          break;
         }
 
         case 'ListMcpResources':
           if (!mcpRegistry) {
-            return '错误: MCP 未启用';
+            result = '错误: MCP 未启用';
+            break;
           }
-          return runListMcpResources(mcpRegistry, input.server as string | undefined);
+          result = runListMcpResources(mcpRegistry, input.server as string | undefined);
+          break;
 
         case 'ReadMcpResource':
           if (!mcpRegistry) {
-            return '错误: MCP 未启用';
+            result = '错误: MCP 未启用';
+            break;
           }
-          return await runReadMcpResource(
+          result = await runReadMcpResource(
             mcpRegistry,
             input.server as string,
             input.uri as string
           );
+          break;
 
         default:
           // MCP 工具路由（mcp__serverName__toolName）
           if (isMCPTool(toolName) && mcpRegistry) {
-            return await mcpRegistry.executeTool(toolName, input);
+            result = await mcpRegistry.executeTool(toolName, input);
+            break;
           }
-          return `错误: 未知工具 "${toolName}"`;
+          result = `错误: 未知工具 "${toolName}"`;
+          break;
       }
+      return normalizeToolExecutionResult(result);
     } catch (error: unknown) {
       if (error instanceof Error) {
-        return `工具执行错误: ${error.message}`;
+        return normalizeToolExecutionResult(`工具执行错误: ${error.message}`);
       }
-      return `工具执行错误: ${String(error)}`;
+      return normalizeToolExecutionResult(`工具执行错误: ${String(error)}`);
     }
   };
 }

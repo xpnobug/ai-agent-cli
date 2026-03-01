@@ -7,6 +7,7 @@ import type { SlashCommand } from './registry.js';
 import { getConfigSummary } from '../services/config/configStore.js';
 import { runReconfigureWizard } from '../services/config/setup.js';
 import { countTokensFromUsage, formatTokenCount, getTokenPercentage } from '../utils/tokenCounter.js';
+import { toolResultContentToText } from '../core/toolResult.js';
 import { getModelContextLength, getModelDisplayName } from '../utils/modelConfig.js';
 import { getPermissionManager } from '../core/permissions.js';
 import type { PermissionMode } from '../core/permissions.js';
@@ -381,7 +382,8 @@ export const contextCommand: SlashCommand = {
           if (block.type === 'text') {
             msgTokens += Math.ceil(block.text.length / 4);
           } else if (block.type === 'tool_result') {
-            msgTokens += Math.ceil((block.content?.length || 0) / 4);
+            const text = toolResultContentToText(block.content);
+            msgTokens += Math.ceil(text.length / 4);
           }
         }
       }

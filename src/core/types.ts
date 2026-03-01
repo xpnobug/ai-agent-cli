@@ -18,10 +18,40 @@ export interface ToolUseBlock {
   input: Record<string, unknown>;
 }
 
+export interface ToolResultTextBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ToolResultImageBlock {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+}
+
+export interface ToolResultDocumentBlock {
+  type: 'document';
+  source: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+}
+
+export type ToolResultContentBlock =
+  | ToolResultTextBlock
+  | ToolResultImageBlock
+  | ToolResultDocumentBlock;
+
+export type ToolResultContent = string | ToolResultContentBlock[];
+
 export interface ToolResultBlock {
   type: 'tool_result';
   tool_use_id: string;
-  content: string;
+  content: ToolResultContent;
   is_error?: boolean;
   name?: string;
 }
@@ -64,16 +94,22 @@ export interface ToolDefinition {
 // 工具执行结果
 export interface ToolResult {
   tool_use_id: string;
-  content: string;
+  content: ToolResultContent;
   is_error?: boolean;
   name?: string;
 }
 
 // 工具执行函数类型
+export interface ToolExecutionResult {
+  content: ToolResultContent;
+  uiContent?: string;
+  isError?: boolean;
+}
+
 export type ExecuteToolFunc = (
   toolName: string,
   input: Record<string, unknown>
-) => Promise<string>;
+) => Promise<ToolExecutionResult>;
 
 // LLM 响应
 export interface LLMResponse {

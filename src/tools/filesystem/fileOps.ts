@@ -7,9 +7,12 @@ import path from 'node:path';
 import { safePath } from '../../services/system/security.js';
 import { validateFileAccess } from '../../services/system/sensitiveFiles.js';
 import { getFileReadTimestamp, recordFileRead } from '../../services/system/fileFreshness.js';
+import type { ToolExecutionResult, ToolResultContentBlock } from '../../core/types.js';
 
-const MAX_OUTPUT_SIZE = 0.25 * 1024 * 1024; // 0.25MB
+const MAX_OUTPUT_SIZE = 0.25 * 1024 * 1024; // 0.25MB（对标 Kode-cli）
 const MAX_LINE_LENGTH = 2000;
+const MAX_IMAGE_SIZE = 3.75 * 1024 * 1024; // 3.75MB（对标 Kode-cli）
+const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10MB（对标 Kode-cli）
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 
@@ -102,6 +105,14 @@ function clampLine(line: string): string {
   return line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) : line;
 }
 
+function buildError(message: string): ToolExecutionResult {
+  return {
+    content: message,
+    uiContent: message,
+    isError: true,
+  };
+}
+
 function sliceLines(
   lines: string[],
   offset?: number,
@@ -124,46 +135,83 @@ export async function runRead(
   filePath: string,
   limit?: number,
   offset?: number
-): Promise<string> {
+): Promise<ToolExecutionResult> {
   try {
     // 安全路径检查
     const fullPath = safePath(workdir, filePath);
 
     // 检查文件是否存在
     if (!(await fs.pathExists(fullPath))) {
-      return `错误: 文件不存在: ${filePath}`;
+      return buildError(`错误: 文件不存在: ${filePath}`);
     }
 
     // 检查是否为目录
     const stats = await fs.stat(fullPath);
     if (stats.isDirectory()) {
-      return `错误: ${filePath} 是一个目录，请使用 bash ls 命令查看目录内容`;
+      return buildError(`错误: ${filePath} 是一个目录，请使用 bash ls 命令查看目录内容`);
     }
 
     const ext = path.extname(fullPath).toLowerCase();
 
     if (BINARY_EXTENSIONS.has(ext)) {
-      return `错误: 无法读取二进制文件 (${ext})，请使用合适的工具进行分析。`;
+      return buildError(`错误: 无法读取二进制文件 (${ext})，请使用合适的工具进行分析。`);
     }
 
     if (IMAGE_EXTENSIONS.has(ext)) {
       if (stats.size === 0) {
-        return '错误: 空图片无法处理。';
+        return buildError('错误: 空图片无法处理。');
       }
+      if (stats.size > MAX_IMAGE_SIZE) {
+        return buildError('错误: 图片大小超过限制，请缩小图片后再读取。');
+      }
+      const buffer = await fs.readFile(fullPath);
+      const mediaType = ext === '.jpg' || ext === '.jpeg'
+        ? 'image/jpeg'
+        : ext === '.png'
+          ? 'image/png'
+          : ext === '.gif'
+            ? 'image/gif'
+            : 'image/webp';
+      const block: ToolResultContentBlock = {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: buffer.toString('base64'),
+        },
+      };
       recordFileRead(fullPath, stats.mtimeMs);
-      return 'Read image';
+      return {
+        content: [block],
+        uiContent: 'Read image',
+      };
     }
 
     if (ext === '.pdf') {
       if (stats.size === 0) {
-        return '错误: 空 PDF 文件无法处理。';
+        return buildError('错误: 空 PDF 文件无法处理。');
       }
+      if (stats.size > MAX_PDF_SIZE) {
+        return buildError('错误: PDF 文件过大，请缩小文件后再读取。');
+      }
+      const buffer = await fs.readFile(fullPath);
+      const block: ToolResultContentBlock = {
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: buffer.toString('base64'),
+        },
+      };
       recordFileRead(fullPath, stats.mtimeMs);
-      return 'Read pdf';
+      return {
+        content: [block],
+        uiContent: 'Read pdf',
+      };
     }
 
     if (stats.size > MAX_OUTPUT_SIZE && !offset && !limit) {
-      return formatFileSizeError(stats.size);
+      return buildError(formatFileSizeError(stats.size));
     }
 
     // 读取文件内容
@@ -191,12 +239,15 @@ export async function runRead(
         const { sliced } = sliceLines(allLines, offset, limit);
         const processed = sliced.map(clampLine).join('\n');
         if (Buffer.byteLength(processed, 'utf8') > MAX_OUTPUT_SIZE) {
-          return formatFileSizeError(Buffer.byteLength(processed, 'utf8'));
+          return buildError(formatFileSizeError(Buffer.byteLength(processed, 'utf8')));
         }
-        return processed;
+        return {
+          content: processed,
+          uiContent: processed,
+        };
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
-        return `错误: 无法解析 notebook 文件: ${msg}`;
+        return buildError(`错误: 无法解析 notebook 文件: ${msg}`);
       }
     }
 
@@ -206,15 +257,18 @@ export async function runRead(
     const processed = sliced.map(clampLine).join('\n');
 
     if (Buffer.byteLength(processed, 'utf8') > MAX_OUTPUT_SIZE) {
-      return formatFileSizeError(Buffer.byteLength(processed, 'utf8'));
+      return buildError(formatFileSizeError(Buffer.byteLength(processed, 'utf8')));
     }
 
-    return processed;
+    return {
+      content: processed,
+      uiContent: processed,
+    };
   } catch (error: unknown) {
     if (error instanceof Error) {
-      return `错误: ${error.message}`;
+      return buildError(`错误: ${error.message}`);
     }
-    return `错误: ${String(error)}`;
+    return buildError(`错误: ${String(error)}`);
   }
 }
 

@@ -6,6 +6,7 @@ import OpenAI from 'openai';
 import type { Message, ToolDefinition, ToolResult, LLMResponse, ContentBlock, TokenUsage } from '../../../core/types.js';
 import { ProtocolAdapter } from './base.js';
 import type { StreamCallbacks, StreamResult } from './base.js';
+import { toolResultContentToText } from '../../../core/toolResult.js';
 
 export class OpenAIAdapter extends ProtocolAdapter {
   private client!: OpenAI;
@@ -99,7 +100,7 @@ export class OpenAIAdapter extends ProtocolAdapter {
             if (block.type === 'tool_result') {
               openaiMessages.push({
                 role: 'tool',
-                content: block.content,
+                content: toolResultContentToText(block.content),
                 tool_call_id: block.tool_use_id,
               });
             } else if (block.type === 'text') {
@@ -250,7 +251,7 @@ export class OpenAIAdapter extends ProtocolAdapter {
             if (block.type === 'tool_result') {
               openaiMessages.push({
                 role: 'tool',
-                content: block.content,
+                content: toolResultContentToText(block.content),
                 tool_call_id: block.tool_use_id,
               });
             } else if (block.type === 'text') {
