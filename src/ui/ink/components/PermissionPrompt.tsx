@@ -2,6 +2,7 @@
  * PermissionPrompt - 权限确认组件
  */
 
+import path from 'node:path';
 import { useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { Select, type SelectOption } from './Select.js';
@@ -18,13 +19,24 @@ export interface PermissionPromptProps {
 }
 
 function formatToolMessage(toolName: string, params: Record<string, unknown>): string {
+  const formatPath = (raw: string): string => {
+    const cwd = process.cwd();
+    if (path.isAbsolute(raw)) {
+      const rel = path.relative(cwd, raw);
+      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+        return rel;
+      }
+    }
+    return raw;
+  };
+
   switch (toolName) {
     case 'bash':
       return String(params.command || '').slice(0, 160);
     case 'write_file':
     case 'edit_file':
     case 'read_file':
-      return String(params.file_path || params.path || '').slice(0, 160);
+      return formatPath(String(params.file_path || params.path || '')).slice(0, 160);
     default:
       return JSON.stringify(params).slice(0, 160);
   }

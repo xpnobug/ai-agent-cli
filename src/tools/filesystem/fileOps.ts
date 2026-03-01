@@ -13,6 +13,7 @@ const MAX_OUTPUT_SIZE = 0.25 * 1024 * 1024; // 0.25MB（对标 Kode-cli）
 const MAX_LINE_LENGTH = 2000;
 const MAX_IMAGE_SIZE = 3.75 * 1024 * 1024; // 3.75MB（对标 Kode-cli）
 const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10MB（对标 Kode-cli）
+const PATH_HINT = '允许目录: 工作目录、用户主目录、/tmp、/var/tmp。';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 
@@ -113,6 +114,14 @@ function buildError(message: string): ToolExecutionResult {
   };
 }
 
+function formatPathError(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (msg.startsWith('路径越界') || msg.startsWith('路径非法')) {
+    return `${msg} ${PATH_HINT}`;
+  }
+  return msg;
+}
+
 function sliceLines(
   lines: string[],
   offset?: number,
@@ -142,7 +151,12 @@ export async function runRead(
     }
 
     // 安全路径检查
-    const fullPath = safePath(workdir, filePath);
+    let fullPath: string;
+    try {
+      fullPath = safePath(workdir, filePath);
+    } catch (error: unknown) {
+      return buildError(`错误: ${formatPathError(error)}`);
+    }
 
     // 检查文件是否存在
     if (!(await fs.pathExists(fullPath))) {
@@ -293,7 +307,12 @@ export async function runWrite(
     validateFileAccess(workdir, filePath, 'write');
 
     // 安全路径检查
-    const fullPath = safePath(workdir, filePath);
+    let fullPath: string;
+    try {
+      fullPath = safePath(workdir, filePath);
+    } catch (error: unknown) {
+      return `错误: ${formatPathError(error)}`;
+    }
 
     const exists = await fs.pathExists(fullPath);
     if (exists) {
@@ -347,7 +366,12 @@ export async function runEdit(
     validateFileAccess(workdir, filePath, 'edit');
 
     // 安全路径检查
-    const fullPath = safePath(workdir, filePath);
+    let fullPath: string;
+    try {
+      fullPath = safePath(workdir, filePath);
+    } catch (error: unknown) {
+      return `错误: ${formatPathError(error)}`;
+    }
 
     // 检查文件是否存在
     if (!(await fs.pathExists(fullPath))) {

@@ -4,6 +4,7 @@
  * 使用正交状态（loading/streaming/focus）替代互斥的 AppPhase。
  */
 
+import path from 'node:path';
 import type { UIController } from '../UIController.js';
 import type { AgentEvent } from '../../core/agentEvent.js';
 import type { AppStore } from './store.js';
@@ -237,10 +238,21 @@ export class InkUIController implements UIController {
       return String(input.command).slice(0, 80);
     }
 
+    const formatPath = (raw: string): string => {
+      const cwd = process.cwd();
+      if (path.isAbsolute(raw)) {
+        const rel = path.relative(cwd, raw);
+        if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+          return rel;
+        }
+      }
+      return raw;
+    };
+
     // 文件路径类参数
     for (const key of ['file_path', 'path', 'relative_path']) {
       if (input[key] && typeof input[key] === 'string') {
-        return String(input[key]).slice(0, 80);
+        return formatPath(String(input[key])).slice(0, 80);
       }
     }
 
