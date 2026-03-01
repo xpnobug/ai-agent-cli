@@ -21,6 +21,7 @@ export interface BashInput {
 export interface ReadFileInput {
   path: string;
   limit?: number;
+  offset?: number;
 }
 
 // 文件写入输入

@@ -56,6 +56,7 @@ export const READ_FILE_TOOL: ToolDefinition = {
 功能:
 - 读取任何文本文件
 - 可选择限制读取行数和起始偏移
+- 超大文件会拒绝输出，需要配合 offset/limit
 - 自动检测文件编码
 
 使用建议:
@@ -75,7 +76,7 @@ export const READ_FILE_TOOL: ToolDefinition = {
       },
       offset: {
         type: 'number',
-        description: '起始行偏移（0-based，可选）',
+        description: '起始行号（1-based，可选）',
       },
     },
     required: ['path'],
