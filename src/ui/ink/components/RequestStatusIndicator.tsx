@@ -125,9 +125,8 @@ export function RequestStatusIndicator({
       <Box flexWrap="nowrap" height={1} width={2}>
         <Text color={colors.primary}>{frames[frame]}</Text>
       </Box>
-      <Text dimColor>
-        {getLabel(status)}… ({stats})
-      </Text>
+      <Text color={colors.primary}>{getLabel(status)}… </Text>
+      <Text color={colors.textDim}>({stats})</Text>
     </Box>
   );
 }
