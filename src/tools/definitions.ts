@@ -338,6 +338,11 @@ export const ASK_USER_QUESTION_TOOL: ToolDefinition = {
           required: ['question', 'header', 'options'],
         },
       },
+      answers: {
+        type: 'object',
+        description: '预填回答（可选，key 为问题文本，value 为回答）',
+        additionalProperties: { type: 'string' },
+      },
     },
     required: ['questions'],
   },

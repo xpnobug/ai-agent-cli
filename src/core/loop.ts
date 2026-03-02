@@ -17,7 +17,6 @@ import type { UIController } from '../ui/UIController.js';
 import type { TokenTracker } from '../utils/tokenTracker.js';
 import type { HierarchicalAbortController } from './abort.js';
 import { agentLoopGenerator } from './loopGenerator.js';
-import { isMarkdownContent } from '../ui/markdown.js';
 
 /**
  * 代理循环配置
@@ -87,7 +86,7 @@ export async function agentLoop(
         break;
 
       case 'stream_done':
-        uiController.finalizeStream(event.fullText, isMarkdownContent(event.fullText));
+        uiController.finalizeStream(event.fullText, false);
         break;
 
       case 'tool_start':

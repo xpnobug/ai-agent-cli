@@ -58,6 +58,24 @@ export type LoadingState = {
   costUSD?: number;
 } | null;
 
+// ─── AskUserQuestion 类型 ───
+
+export type AskUserQuestionOption = {
+  label: string;
+  description: string;
+};
+
+export type AskUserQuestionDef = {
+  question: string;
+  header: string;
+  options: AskUserQuestionOption[];
+  multiSelect?: boolean;
+};
+
+export type AskUserQuestionResult = {
+  answers: Record<string, string>;
+};
+
 /** 流式文本状态 */
 export type StreamingState = {
   text: string;
@@ -75,7 +93,12 @@ export type FocusTarget =
       commandInjectionDetected?: boolean;
       resolve: (r: PermissionDecision) => void;
     }
-  | { type: 'question'; questions: unknown[]; resolve: (r: string) => void };
+  | {
+      type: 'question';
+      questions: AskUserQuestionDef[];
+      initialAnswers?: Record<string, string>;
+      resolve: (r: AskUserQuestionResult | null) => void;
+    };
 
 /**
  * 不含 id 的 CompletedItem 创建类型

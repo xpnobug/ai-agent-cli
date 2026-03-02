@@ -1,72 +1,746 @@
 /**
- * QuestionPrompt - 问答交互组件
+ * QuestionPrompt - AskUserQuestion 交互
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import stringWidth from 'string-width';
+import { getInkColors } from '../../theme.js';
+import type { AskUserQuestionDef, AskUserQuestionResult } from '../types.js';
+import { Select } from './Select.js';
 
-export interface QuestionOption {
-  label: string;
-  description: string;
+const FIGURES = process.platform === 'win32'
+  ? {
+      pointer: '>',
+      checkboxOn: '[x]',
+      checkboxOff: '[ ]',
+      tick: '√',
+      warning: '!',
+      bullet: '*',
+      arrowRight: '>',
+    }
+  : {
+      pointer: '›',
+      checkboxOn: '☑',
+      checkboxOff: '☐',
+      tick: '✔',
+      warning: '⚠',
+      bullet: '•',
+      arrowRight: '→',
+    };
+
+type QuestionState = {
+  selectedValue: string | string[];
+  textInputValue: string;
+};
+
+type MultiSelectNavState = {
+  focusedOptionIndex: number;
+  isSubmitFocused: boolean;
+};
+
+type MultiSelectNavKey = {
+  downArrow?: boolean;
+  upArrow?: boolean;
+  tab?: boolean;
+  shift?: boolean;
+};
+
+type TextInputKey = {
+  ctrl?: boolean;
+  meta?: boolean;
+  tab?: boolean;
+  return?: boolean;
+};
+
+type SingleSelectNavKey = {
+  downArrow?: boolean;
+  upArrow?: boolean;
+};
+
+function isTextInputChar(input: unknown, key: TextInputKey): input is string {
+  if (key.ctrl || key.meta || key.tab) return false;
+  if (typeof input !== 'string' || input.length === 0) return false;
+  for (const char of input) {
+    const code = char.codePointAt(0);
+    if (code === undefined) return false;
+    if (code < 32 || code === 127) return false;
+  }
+  return true;
 }
 
-export interface QuestionDef {
-  question: string;
-  header: string;
-  options: QuestionOption[];
-  multiSelect?: boolean;
+function applySingleSelectNav(args: {
+  focusedOptionIndex: number;
+  key: SingleSelectNavKey;
+  optionCount: number;
+}): number {
+  const { focusedOptionIndex, key, optionCount } = args;
+
+  if (key.downArrow) return Math.min(optionCount - 1, focusedOptionIndex + 1);
+  if (key.upArrow) return Math.max(0, focusedOptionIndex - 1);
+  return focusedOptionIndex;
+}
+
+function applyMultiSelectNav(args: {
+  state: MultiSelectNavState;
+  key: MultiSelectNavKey;
+  optionCount: number;
+}): MultiSelectNavState {
+  const { state, key, optionCount } = args;
+
+  const nextKey = key.downArrow || (key.tab && !key.shift);
+  const prevKey = key.upArrow || (key.tab && key.shift);
+
+  if (state.isSubmitFocused) {
+    if (prevKey) {
+      return {
+        focusedOptionIndex: Math.max(0, optionCount - 1),
+        isSubmitFocused: false,
+      };
+    }
+    return state;
+  }
+
+  if (nextKey) {
+    if (state.focusedOptionIndex >= optionCount - 1) {
+      return { ...state, isSubmitFocused: true };
+    }
+    return { ...state, focusedOptionIndex: state.focusedOptionIndex + 1 };
+  }
+
+  if (prevKey) {
+    return {
+      ...state,
+      focusedOptionIndex: Math.max(0, state.focusedOptionIndex - 1),
+    };
+  }
+
+  return state;
+}
+
+function truncateWithEllipsis(label: string, maxWidth: number): string {
+  if (stringWidth(label) <= maxWidth) return label;
+
+  let candidate = label;
+  while (candidate.length > 1 && stringWidth(candidate + '…') > maxWidth) {
+    candidate = candidate.slice(0, -1);
+  }
+  return candidate.length ? candidate + '…' : '…';
+}
+
+function getTabHeaders(args: {
+  questions: AskUserQuestionDef[];
+  currentQuestionIndex: number;
+  columns: number;
+  hideSubmitTab: boolean;
+}): string[] {
+  const submitLabel = args.hideSubmitTab ? '' : ` ${FIGURES.tick} Submit `;
+  const reserved =
+    stringWidth('← ') + stringWidth(' →') + stringWidth(submitLabel);
+  const available = args.columns - reserved;
+
+  const headers = args.questions.map(
+    (question, index) => question?.header || `Q${index + 1}`,
+  );
+
+  if (available <= 0) {
+    return headers.map((header, index) =>
+      index === args.currentQuestionIndex ? header.slice(0, 3) : '',
+    );
+  }
+
+  const total = headers.reduce(
+    (sum, header) => sum + 4 + stringWidth(header),
+    0,
+  );
+  if (total <= available) return headers;
+
+  const currentHeader = headers[args.currentQuestionIndex] ?? '';
+  const currentTabWidth = 4 + stringWidth(currentHeader);
+  const currentBudget = Math.min(currentTabWidth, Math.floor(available / 2));
+  const remaining = available - currentBudget;
+  const otherCount = args.questions.length - 1;
+  const otherBudget = Math.max(
+    6,
+    Math.floor(remaining / Math.max(otherCount, 1)),
+  );
+
+  return headers.map((header, index) => {
+    const labelBudget =
+      (index === args.currentQuestionIndex ? currentBudget : otherBudget) - 4;
+    if (stringWidth(header) <= labelBudget) return header;
+
+    const truncated = truncateWithEllipsis(header, labelBudget);
+    if (index === args.currentQuestionIndex) return truncated;
+    if (truncated.length > 1) return truncated;
+    return truncateWithEllipsis(header[0] ?? header, labelBudget);
+  });
+}
+
+function formatMultiSelectAnswer(
+  selectedValues: string[],
+  otherText: string,
+): string {
+  const selections = selectedValues.filter((value) => value !== '__other__');
+  const trimmedOther = otherText.trim();
+  if (selectedValues.includes('__other__') && trimmedOther) {
+    selections.push(trimmedOther);
+  }
+  return selections.join(', ');
+}
+
+function getTrimmedOtherAnswer(otherText: string): string | null {
+  const trimmed = otherText.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getInverseTextColor(color: string | undefined): string | undefined {
+  if (!color || !color.startsWith('#') || color.length < 7) return undefined;
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return undefined;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? '#000' : '#fff';
 }
 
 export interface QuestionPromptProps {
-  questions: QuestionDef[];
-  onResolve: (result: string) => void;
+  questions: AskUserQuestionDef[];
+  initialAnswers?: Record<string, string>;
+  onResolve: (result: AskUserQuestionResult | null) => void;
 }
 
-export function QuestionPrompt({ questions, onResolve }: QuestionPromptProps) {
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+export function QuestionPrompt({
+  questions,
+  initialAnswers,
+  onResolve,
+}: QuestionPromptProps) {
+  const colors = getInkColors();
+  const columns = process.stdout.columns || 80;
+  const inverseText = getInverseTextColor(colors.primary);
 
-  const q = questions[currentIdx];
-  if (!q) return null;
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [focusedOptionIndex, setFocusedOptionIndex] = useState(0);
+  const [isMultiSelectSubmitFocused, setIsMultiSelectSubmitFocused] =
+    useState(false);
+  const [answers, setAnswers] = useState<Record<string, string>>(
+    initialAnswers ?? {},
+  );
+  const [questionStates, setQuestionStates] = useState<
+    Record<string, QuestionState>
+  >({});
 
-  useInput(useCallback((input: string) => {
-    const num = parseInt(input, 10);
-    if (num >= 1 && num <= q.options.length) {
-      const label = q.options[num - 1].label;
-      const newAnswers = { ...answers, [q.header]: label };
-      setAnswers(newAnswers);
+  const currentQuestion = questions[currentQuestionIndex];
+  const isSubmitTab = currentQuestionIndex === questions.length;
+  const hideSubmitTab = questions.length === 1 && !questions[0]?.multiSelect;
 
-      if (currentIdx + 1 < questions.length) {
-        setCurrentIdx(currentIdx + 1);
-      } else {
-        // 格式化结果
-        let result = '用户回答:\n\n';
-        for (const [header, answer] of Object.entries(newAnswers)) {
-          if (Array.isArray(answer)) {
-            result += `${header}: ${answer.join(', ')}\n`;
-          } else {
-            result += `${header}: ${answer}\n`;
-          }
-        }
-        onResolve(result);
+  const maxTabIndex = hideSubmitTab
+    ? Math.max(0, questions.length - 1)
+    : questions.length;
+  const tabHeaders = useMemo(
+    () =>
+      getTabHeaders({
+        questions,
+        currentQuestionIndex,
+        columns,
+        hideSubmitTab,
+      }),
+    [questions, currentQuestionIndex, columns, hideSubmitTab],
+  );
+
+  const activeQuestionState: QuestionState | undefined =
+    currentQuestion?.question
+      ? questionStates[currentQuestion.question]
+      : undefined;
+  const isOtherFocused =
+    !isSubmitTab &&
+    currentQuestion &&
+    !isMultiSelectSubmitFocused &&
+    focusedOptionIndex === currentQuestion.options.length;
+
+  const isInTextInput = isOtherFocused;
+
+  const cancel = useCallback(() => {
+    onResolve(null);
+  }, [onResolve]);
+
+  const submit = useCallback(() => {
+    onResolve({ answers });
+  }, [onResolve, answers]);
+
+  const setQuestionState = useCallback(
+    (
+      questionText: string,
+      next: Partial<QuestionState>,
+      isMultiSelect: boolean,
+    ) => {
+      setQuestionStates((prev) => {
+        const existing = prev[questionText];
+        const selectedValue =
+          next.selectedValue ??
+          existing?.selectedValue ??
+          (isMultiSelect ? ([] as string[]) : '');
+        const textInputValue =
+          next.textInputValue ?? existing?.textInputValue ?? '';
+        return {
+          ...prev,
+          [questionText]: { selectedValue, textInputValue },
+        };
+      });
+    },
+    [],
+  );
+
+  const setAnswer = useCallback(
+    (questionText: string, answer: string, shouldAdvance: boolean) => {
+      setAnswers((prev) => ({ ...prev, [questionText]: answer }));
+      if (shouldAdvance) {
+        setCurrentQuestionIndex((prev) => prev + 1);
+        setFocusedOptionIndex(0);
+      }
+    },
+    [],
+  );
+
+  useInput((input, key) => {
+    if (key.escape) {
+      cancel();
+      return;
+    }
+
+    const isMultiSelectQuestion =
+      Boolean(currentQuestion?.multiSelect) && !isSubmitTab;
+    const allowQuestionTabNav = !(isInTextInput && !isSubmitTab);
+
+    if (!key.return && allowQuestionTabNav) {
+      const prevQuestion =
+        key.leftArrow || (!isMultiSelectQuestion && key.shift && key.tab);
+      const nextQuestion =
+        key.rightArrow || (!isMultiSelectQuestion && key.tab && !key.shift);
+
+      if (prevQuestion && currentQuestionIndex > 0) {
+        setCurrentQuestionIndex((prev) => Math.max(0, prev - 1));
+        setFocusedOptionIndex(0);
+        setIsMultiSelectSubmitFocused(false);
+        return;
+      }
+
+      if (nextQuestion && currentQuestionIndex < maxTabIndex) {
+        setCurrentQuestionIndex((prev) => Math.min(maxTabIndex, prev + 1));
+        setFocusedOptionIndex(0);
+        setIsMultiSelectSubmitFocused(false);
+        return;
       }
     }
-  }, [q, currentIdx, questions, answers, onResolve]));
+
+    if (isSubmitTab) {
+      return;
+    }
+
+    if (!currentQuestion) return;
+
+    const optionCount = currentQuestion.options.length + 1;
+    const questionText = currentQuestion.question;
+
+    if (currentQuestion.multiSelect) {
+      if (key.downArrow || key.upArrow || key.tab) {
+        const next = applyMultiSelectNav({
+          state: {
+            focusedOptionIndex,
+            isSubmitFocused: isMultiSelectSubmitFocused,
+          },
+          key: {
+            downArrow: key.downArrow,
+            upArrow: key.upArrow,
+            tab: key.tab,
+            shift: key.shift,
+          },
+          optionCount,
+        });
+
+        if (
+          next.focusedOptionIndex !== focusedOptionIndex ||
+          next.isSubmitFocused !== isMultiSelectSubmitFocused
+        ) {
+          setFocusedOptionIndex(next.focusedOptionIndex);
+          setIsMultiSelectSubmitFocused(next.isSubmitFocused);
+        }
+        return;
+      }
+
+      if (isMultiSelectSubmitFocused && (key.return || input === ' ')) {
+        setCurrentQuestionIndex((prev) => prev + 1);
+        setFocusedOptionIndex(0);
+        setIsMultiSelectSubmitFocused(false);
+        return;
+      }
+
+      if (isOtherFocused) {
+        if (key.backspace || key.delete) {
+          const existing = questionStates[questionText]?.textInputValue ?? '';
+          const nextText = existing.slice(0, -1);
+          const existingSelected = questionStates[questionText]?.selectedValue;
+          const selected = Array.isArray(existingSelected)
+            ? existingSelected
+            : [];
+          const trimmed = nextText.trim();
+          const nextSelected = trimmed
+            ? selected.includes('__other__')
+              ? selected
+              : [...selected, '__other__']
+            : selected.filter((v) => v !== '__other__');
+
+          setQuestionState(
+            questionText,
+            { textInputValue: nextText, selectedValue: nextSelected },
+            true,
+          );
+          setAnswers((prev) => ({
+            ...prev,
+            [questionText]: formatMultiSelectAnswer(nextSelected, nextText),
+          }));
+          return;
+        }
+
+        if (isTextInputChar(input, key)) {
+          const existing = questionStates[questionText]?.textInputValue ?? '';
+          const nextText = existing + input;
+          const existingSelected = questionStates[questionText]?.selectedValue;
+          const selected = Array.isArray(existingSelected)
+            ? existingSelected
+            : [];
+          const trimmed = nextText.trim();
+          const nextSelected = trimmed
+            ? selected.includes('__other__')
+              ? selected
+              : [...selected, '__other__']
+            : selected.filter((v) => v !== '__other__');
+
+          setQuestionState(
+            questionText,
+            { textInputValue: nextText, selectedValue: nextSelected },
+            true,
+          );
+          setAnswers((prev) => ({
+            ...prev,
+            [questionText]: formatMultiSelectAnswer(nextSelected, nextText),
+          }));
+          return;
+        }
+      }
+
+      if (key.return || (input === ' ' && !isOtherFocused)) {
+        const existing = questionStates[questionText]?.selectedValue;
+        const selected = Array.isArray(existing) ? existing : [];
+        const value = isOtherFocused
+          ? '__other__'
+          : currentQuestion.options[focusedOptionIndex]?.label;
+        if (!value) return;
+
+        const next = selected.includes(value)
+          ? selected.filter((v) => v !== value)
+          : [...selected, value];
+
+        setQuestionState(questionText, { selectedValue: next }, true);
+
+        const otherText = questionStates[questionText]?.textInputValue ?? '';
+        setAnswers((prev) => ({
+          ...prev,
+          [questionText]: formatMultiSelectAnswer(next, otherText),
+        }));
+      }
+      return;
+    }
+
+    if (key.downArrow || key.upArrow) {
+      setFocusedOptionIndex((prev) =>
+        applySingleSelectNav({
+          focusedOptionIndex: prev,
+          key: { downArrow: key.downArrow, upArrow: key.upArrow },
+          optionCount,
+        }),
+      );
+      return;
+    }
+
+    if (isOtherFocused) {
+      if (key.backspace || key.delete) {
+        const existing = questionStates[questionText]?.textInputValue ?? '';
+        setQuestionState(
+          questionText,
+          { textInputValue: existing.slice(0, -1) },
+          false,
+        );
+        return;
+      }
+
+      if (isTextInputChar(input, key)) {
+        const existing = questionStates[questionText]?.textInputValue ?? '';
+        setQuestionState(
+          questionText,
+          { textInputValue: existing + input },
+          false,
+        );
+        return;
+      }
+    }
+
+    if (key.return) {
+      const isSelectingOther =
+        focusedOptionIndex === currentQuestion.options.length;
+
+      if (isSelectingOther) {
+        const otherText = questionStates[questionText]?.textInputValue ?? '';
+        const trimmed = getTrimmedOtherAnswer(otherText);
+        if (!trimmed) return;
+
+        const selectedValue = '__other__';
+        setQuestionState(questionText, { selectedValue }, false);
+
+        if (hideSubmitTab) {
+          const nextAnswers = { ...answers, [questionText]: trimmed };
+          onResolve({ answers: nextAnswers });
+          return;
+        }
+
+        setAnswer(questionText, trimmed, true);
+        return;
+      }
+
+      const selectedValue = currentQuestion.options[focusedOptionIndex]?.label;
+      if (!selectedValue) return;
+
+      setQuestionState(questionText, { selectedValue }, false);
+
+      if (hideSubmitTab) {
+        const nextAnswers = { ...answers, [questionText]: selectedValue };
+        onResolve({ answers: nextAnswers });
+        return;
+      }
+
+      setAnswer(questionText, selectedValue, true);
+    }
+  });
+
+  const showArrows = !(questions.length === 1 && hideSubmitTab);
+  const rightArrowInactive = currentQuestionIndex === maxTabIndex;
+
+  const allQuestionsAnswered =
+    questions.every((q) => q?.question && Boolean(answers[q.question])) ?? false;
+
+  if (questions.length === 0) {
+    return (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color={colors.error}>Invalid AskUserQuestion input.</Text>
+        <Text color={colors.textDim}>Press Esc to cancel.</Text>
+      </Box>
+    );
+  }
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text bold color="blue">📋 {q.header}</Text>
-      <Text> </Text>
-      <Text>❓ {q.question}</Text>
-      <Text> </Text>
-      {q.options.map((opt, idx) => (
-        <Box key={idx} flexDirection="column">
-          <Text>  <Text bold>{idx + 1}.</Text> {opt.label}</Text>
-          <Text dimColor>     {opt.description}</Text>
+    <Box flexDirection="column" marginTop={1}>
+      <Text color={colors.textDim}>{'─'.repeat(Math.max(10, columns - 1))}</Text>
+      <Box flexDirection="row" marginBottom={1}>
+        {showArrows && (
+          <Text color={currentQuestionIndex === 0 ? colors.textDim : undefined}>
+            ←{' '}
+          </Text>
+        )}
+        {questions.map((question, index) => {
+          const isSelected = index === currentQuestionIndex;
+          const checkbox =
+            question.question && answers[question.question]
+              ? FIGURES.checkboxOn
+              : FIGURES.checkboxOff;
+          const headerText =
+            tabHeaders[index] ?? question.header ?? `Q${index + 1}`;
+          const tabText = ` ${checkbox} ${headerText} `;
+
+          return (
+            <Box key={question.question || `question-${index}`}>
+              <Text
+                backgroundColor={isSelected ? colors.primary : undefined}
+                color={isSelected ? inverseText : undefined}
+              >
+                {tabText}
+              </Text>
+            </Box>
+          );
+        })}
+        {!hideSubmitTab && (
+          <Text
+            backgroundColor={isSubmitTab ? colors.primary : undefined}
+            color={isSubmitTab ? inverseText : undefined}
+          >
+            {' '}
+            {FIGURES.tick} Submit{' '}
+          </Text>
+        )}
+        {showArrows && (
+          <Text color={rightArrowInactive ? colors.textDim : undefined}>
+            {' '}
+            →
+          </Text>
+        )}
+      </Box>
+
+      {!isSubmitTab && currentQuestion && (
+        <>
+          <Text bold>{currentQuestion.question}</Text>
+
+          <Box flexDirection="column" marginTop={1}>
+            {(() => {
+              const rawSelected = activeQuestionState?.selectedValue;
+              const selectedValues = Array.isArray(rawSelected)
+                ? rawSelected
+                : [];
+              const otherSelected = currentQuestion.multiSelect
+                ? selectedValues.includes('__other__')
+                : rawSelected === '__other__';
+              const otherText =
+                questionStates[currentQuestion.question]?.textInputValue ?? '';
+              const otherPlaceholder = currentQuestion.multiSelect
+                ? 'Type something'
+                : 'Type something.';
+              const otherLine =
+                otherText.length > 0
+                  ? otherText
+                  : isOtherFocused || otherSelected
+                    ? otherPlaceholder
+                    : '';
+
+              return (
+                <>
+                  {currentQuestion.options.map((option, index) => {
+                    const isFocused =
+                      !isMultiSelectSubmitFocused &&
+                      index === focusedOptionIndex;
+                    const isSelected = currentQuestion.multiSelect
+                      ? selectedValues.includes(option.label)
+                      : rawSelected === option.label;
+                    const pointer = isFocused ? FIGURES.pointer : ' ';
+                    const color = isFocused ? colors.primary : undefined;
+                    const indicator = currentQuestion.multiSelect
+                      ? isSelected
+                        ? FIGURES.checkboxOn
+                        : FIGURES.checkboxOff
+                      : isSelected
+                        ? FIGURES.tick
+                        : ' ';
+                    return (
+                      <Box key={option.label} flexDirection="column">
+                        <Text color={color}>
+                          {pointer} {indicator} {option.label}
+                        </Text>
+                        <Text color={colors.textDim}>
+                          {'  '}
+                          {option.description}
+                        </Text>
+                      </Box>
+                    );
+                  })}
+
+                  <Box flexDirection="column">
+                    <Text color={isOtherFocused ? colors.primary : undefined}>
+                      {isOtherFocused ? FIGURES.pointer : ' '}{' '}
+                      {currentQuestion.multiSelect
+                        ? otherSelected
+                          ? FIGURES.checkboxOn
+                          : FIGURES.checkboxOff
+                        : otherSelected
+                          ? FIGURES.tick
+                          : ' '}{' '}
+                      Other
+                    </Text>
+                    {(isOtherFocused ||
+                      otherSelected ||
+                      otherText.trim().length > 0) && (
+                      <Text color={colors.textDim}>
+                        {otherLine}
+                        {isOtherFocused && <Text color="gray">▌</Text>}
+                      </Text>
+                    )}
+                  </Box>
+
+                  {currentQuestion.multiSelect && (
+                    <Box marginTop={0}>
+                      <Text
+                        color={
+                          isMultiSelectSubmitFocused ? colors.primary : undefined
+                        }
+                        bold={isMultiSelectSubmitFocused}
+                      >
+                        {isMultiSelectSubmitFocused ? FIGURES.pointer : ' '}{' '}
+                        {currentQuestionIndex === questions.length - 1
+                          ? 'Submit'
+                          : 'Next'}
+                      </Text>
+                    </Box>
+                  )}
+
+                  <Box marginTop={1}>
+                    <Text color={colors.textDim} dimColor>
+                      Enter to select · Tab/Arrow keys to navigate · Esc to
+                      cancel
+                    </Text>
+                  </Box>
+                </>
+              );
+            })()}
+          </Box>
+        </>
+      )}
+
+      {isSubmitTab && (
+        <Box flexDirection="column">
+          <Text bold>Review your answers</Text>
+          {!allQuestionsAnswered && (
+            <Box marginTop={1}>
+              <Text color={colors.warning}>
+                {FIGURES.warning} You have not answered all questions
+              </Text>
+            </Box>
+          )}
+          <Box flexDirection="column" marginTop={1}>
+            {questions
+              .filter((q) => q?.question && answers[q.question])
+              .map((q) => (
+                <Box key={q.question} flexDirection="column" marginLeft={1}>
+                  <Text>
+                    {FIGURES.bullet} {q.question}
+                  </Text>
+                  <Box marginLeft={2}>
+                    <Text color={colors.success}>
+                      {FIGURES.arrowRight} {answers[q.question]}
+                    </Text>
+                  </Box>
+                </Box>
+              ))}
+          </Box>
+
+          <Box marginTop={1}>
+            <Text color={colors.textDim}>Ready to submit your answers?</Text>
+          </Box>
+
+          <Box marginTop={1}>
+            <Select
+              options={[
+                { label: 'Submit answers', value: 'submit' },
+                { label: 'Cancel', value: 'cancel' },
+              ]}
+              onChange={(value) => {
+                if (value === 'cancel') {
+                  cancel();
+                  return;
+                }
+                if (value === 'submit') {
+                  submit();
+                }
+              }}
+            />
+          </Box>
         </Box>
-      ))}
-      <Text> </Text>
-      <Text dimColor>请选择 (1-{q.options.length}):</Text>
+      )}
     </Box>
   );
 }

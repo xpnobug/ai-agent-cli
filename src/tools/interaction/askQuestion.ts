@@ -4,6 +4,7 @@
  */
 
 import * as readline from 'readline';
+import type { ToolExecutionResult } from '../../core/types.js';
 
 /**
  * 问题选项
@@ -26,7 +27,7 @@ export interface Question {
 /**
  * 向用户提问并获取答案
  */
-export async function runAskUserQuestion(questions: Question[]): Promise<string> {
+export async function runAskUserQuestion(questions: Question[]): Promise<string | ToolExecutionResult> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -104,17 +105,33 @@ export async function runAskUserQuestion(questions: Question[]): Promise<string>
 
     rl.close();
 
-    // 格式化返回结果
-    let result = '用户回答:\n\n';
+    const flatAnswers: Record<string, string> = {};
     for (const [header, answer] of Object.entries(answers)) {
       if (Array.isArray(answer)) {
-        result += `${header}: ${answer.join(', ')}\n`;
+        flatAnswers[header] = answer.join(', ');
       } else {
-        result += `${header}: ${answer}\n`;
+        flatAnswers[header] = answer;
       }
     }
 
-    return result;
+    const formatted = Object.entries(flatAnswers)
+      .map(([question, answer]) => `"${question}"="${answer}"`)
+      .join(', ');
+    const assistantText =
+      `User has answered your questions: ${formatted}. ` +
+      'You can now continue with the user\'s answers in mind.';
+
+    const uiLines = [
+      '用户已回答以下问题:',
+      ...Object.entries(flatAnswers).map(
+        ([question, answer]) => `· ${question} → ${answer}`
+      ),
+    ];
+
+    return {
+      content: assistantText,
+      uiContent: uiLines.join('\n'),
+    };
   } catch (error: unknown) {
     rl.close();
     if (error instanceof Error) {

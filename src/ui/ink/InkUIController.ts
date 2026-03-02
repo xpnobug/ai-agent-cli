@@ -8,7 +8,7 @@ import path from 'node:path';
 import type { UIController } from '../UIController.js';
 import type { AgentEvent } from '../../core/agentEvent.js';
 import type { AppStore } from './store.js';
-import { isMarkdownContent } from '../markdown.js';
+import type { AskUserQuestionDef, AskUserQuestionResult } from './types.js';
 import type { TokenTracker } from '../../utils/tokenTracker.js';
 import { setRequestStatus } from './requestStatus.js';
 
@@ -65,7 +65,7 @@ export class InkUIController implements UIController {
         break;
 
       case 'stream_done':
-        this.finalizeStream(event.fullText, isMarkdownContent(event.fullText));
+        this.finalizeStream(event.fullText, false);
         break;
 
       case 'tool_start':
@@ -339,6 +339,23 @@ export class InkUIController implements UIController {
         commandInjectionDetected: options?.commandInjectionDetected,
         resolve: (result) => {
           // 用户做出选择后，清除焦点
+          this.store.setFocus(undefined);
+          resolve(result);
+        },
+      });
+    });
+  }
+
+  async requestQuestion(
+    questions: AskUserQuestionDef[],
+    initialAnswers?: Record<string, string>
+  ): Promise<AskUserQuestionResult | null> {
+    return new Promise((resolve) => {
+      this.store.setFocus({
+        type: 'question',
+        questions,
+        initialAnswers,
+        resolve: (result) => {
           this.store.setFocus(undefined);
           resolve(result);
         },

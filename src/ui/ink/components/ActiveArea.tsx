@@ -16,7 +16,7 @@ import { RequestStatusIndicator } from './RequestStatusIndicator.js';
 import type { TokenStatsSnapshot } from './EnhancedSpinner.js';
 import { UserInput } from './UserInput.js';
 import { PermissionPrompt } from './PermissionPrompt.js';
-import type { QuestionDef } from './QuestionPrompt.js';
+import type { AskUserQuestionDef } from '../types.js';
 import { QuestionPrompt } from './QuestionPrompt.js';
 import type { SlashCommandItem } from '../completion/types.js';
 import { ToolUseView } from './ToolUseView.js';
@@ -77,7 +77,8 @@ export function DynamicArea({
       )}
       {focus?.type === 'question' && (
         <QuestionPrompt
-          questions={focus.questions as QuestionDef[]}
+          questions={focus.questions as AskUserQuestionDef[]}
+          initialAnswers={focus.initialAnswers}
           onResolve={focus.resolve}
         />
       )}

@@ -354,6 +354,8 @@ async function main(): Promise<void> {
         const executeTool = createExecuteTool({
           ...baseToolConfig,
           abortController: rootAbort,
+          askUserQuestion: (questions, initialAnswers) =>
+            inkController.requestQuestion(questions as any, initialAnswers),
         });
 
         const newHistory = await agentLoop(

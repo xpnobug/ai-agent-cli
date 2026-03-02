@@ -13,7 +13,7 @@ import { BannerView } from './BannerView.js';
 import { SystemMessage } from './SystemMessage.js';
 import { ToolUseView } from './ToolUseView.js';
 import { ToolResultView } from './ToolResultView.js';
-import { renderMarkdown, isMarkdownContent } from '../../markdown.js';
+import { applyMarkdown } from '../../markdown.js';
 import { getInkColors } from '../../theme.js';
 import { UI_SYMBOLS } from '../../../core/constants.js';
 
@@ -39,9 +39,7 @@ export function CompletedItemView({ item }: CompletedItemViewProps) {
       );
 
     case 'ai_message': {
-      const rendered = isMarkdownContent(item.text)
-        ? renderMarkdown(item.text)
-        : item.text;
+      const rendered = applyMarkdown(item.text);
       return (
         <Box marginTop={1}>
           <Box flexShrink={0} width={2}>

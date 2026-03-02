@@ -10,6 +10,7 @@ import { runRead, runWrite, runEdit } from './filesystem/fileOps.js';
 import { runGlob } from './search/glob.js';
 import { runGrep } from './search/grep.js';
 import { runAskUserQuestion } from './interaction/askQuestion.js';
+import type { Question } from './interaction/askQuestion.js';
 import { runTodoWrite } from './interaction/todo.js';
 import { runTaskCreate, runTaskGet, runTaskUpdate, runTaskList } from './interaction/taskManager.js';
 import { runSkillLegacy } from './ai/skill.js';
@@ -37,13 +38,14 @@ export interface ToolExecutorConfig {
   agentType?: AgentType; // 当前代理类型（用于安全检查）
   mcpRegistry?: MCPRegistry; // MCP 注册表
   abortController?: HierarchicalAbortController; // 层级式中断控制器
+  askUserQuestion?: (questions: Question[], initialAnswers?: Record<string, string>) => Promise<{ answers: Record<string, string> } | null>;
 }
 
 /**
  * 创建工具执行函数
  */
 export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
-  const { workdir, skillLoader, adapter, systemPrompt, tools, agentType, mcpRegistry, abortController } = config;
+  const { workdir, skillLoader, adapter, systemPrompt, tools, agentType, mcpRegistry, abortController, askUserQuestion } = config;
 
   return async (toolName: string, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
     try {
@@ -112,9 +114,43 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
           );
           break;
 
-        case 'AskUserQuestion':
+        case 'AskUserQuestion': {
+          if (askUserQuestion) {
+            const output = await askUserQuestion(
+              input.questions as Question[],
+              (input.answers as Record<string, string> | undefined)
+            );
+            if (!output) {
+              result = {
+                content: 'User declined to answer questions.',
+                uiContent: '用户取消回答问题。',
+                isError: true,
+              };
+              break;
+            }
+            const formatted = Object.entries(output.answers)
+              .map(([question, answer]) => `"${question}"="${answer}"`)
+              .join(', ');
+            const assistantText =
+              `User has answered your questions: ${formatted}. ` +
+              'You can now continue with the user\'s answers in mind.';
+
+            const uiLines = [
+              '用户已回答以下问题:',
+              ...Object.entries(output.answers).map(
+                ([question, answer]) => `· ${question} → ${answer}`
+              ),
+            ];
+
+            result = {
+              content: assistantText,
+              uiContent: uiLines.join('\n'),
+            };
+            break;
+          }
           result = await runAskUserQuestion(input.questions as any[]);
           break;
+        }
 
         case 'TodoWrite':
           result = await runTodoWrite(input.todos as any[]);
