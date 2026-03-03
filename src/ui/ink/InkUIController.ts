@@ -9,8 +9,11 @@ import type { UIController } from '../UIController.js';
 import type { AgentEvent } from '../../core/agentEvent.js';
 import type { AppStore } from './store.js';
 import type { AskUserQuestionDef, AskUserQuestionResult } from './types.js';
+import { generateId } from './types.js';
 import type { TokenTracker } from '../../utils/tokenTracker.js';
 import { setRequestStatus } from './requestStatus.js';
+import type { Message, ContentBlock } from '../../core/types.js';
+import type { SessionListItem } from '../../services/session/sessionResume.js';
 
 /**
  * 基于 Ink + AppStore 的 UI 控制器实现
@@ -361,6 +364,77 @@ export class InkUIController implements UIController {
         },
       });
     });
+  }
+
+  /**
+   * 请求会话选择（/resume）
+   */
+  async requestSessionResume(sessions: SessionListItem[]): Promise<number | null> {
+    return new Promise((resolve) => {
+      this.store.setFocus({
+        type: 'session_selector',
+        sessions,
+        resolve: (result) => {
+          this.store.setFocus(undefined);
+          resolve(result);
+        },
+      });
+    });
+  }
+
+  /**
+   * 用历史消息重新渲染 UI（用于恢复会话）
+   */
+  hydrateHistory(messages: Message[]): void {
+    const bannerItems = this.store.getState().completedItems.filter((item) => item.type === 'banner');
+    const completedInputs = messages
+      .map((msg) => this._messageToCompletedItem(msg))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    const completed = completedInputs.map((item) => ({
+      ...item,
+      id: generateId(),
+    }));
+
+    this.toolInputById.clear();
+    this.hasMarkedStreaming = false;
+    this._currentStreamText = '';
+    if (this._streamFlushTimer) {
+      clearTimeout(this._streamFlushTimer);
+      this._streamFlushTimer = null;
+    }
+
+    this.store.setState(() => ({
+      completedItems: [...bannerItems, ...completed],
+      activeToolUses: [],
+      loading: null,
+      streaming: null,
+      focus: undefined,
+    }));
+  }
+
+  private _messageToCompletedItem(message: Message) {
+    if (message.role !== 'user' && message.role !== 'assistant') return null;
+    if (this._isToolResultOnly(message.content)) return null;
+    const text = this._messageContentToText(message.content);
+    if (!text) return null;
+    return message.role === 'user'
+      ? { type: 'user_message' as const, text }
+      : { type: 'ai_message' as const, text };
+  }
+
+  private _messageContentToText(content: string | ContentBlock[]): string {
+    if (typeof content === 'string') return content;
+    return content
+      .filter((block) => block.type === 'text')
+      .map((block) => ('text' in block ? block.text : ''))
+      .join('\n\n')
+      .trim();
+  }
+
+  private _isToolResultOnly(content: string | ContentBlock[]): boolean {
+    if (typeof content === 'string') return false;
+    if (content.length === 0) return false;
+    return content.every((block) => block.type === 'tool_result');
   }
 
   showWarning(msg: string): void {

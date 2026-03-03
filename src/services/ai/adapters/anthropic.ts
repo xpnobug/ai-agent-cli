@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { Message, ToolDefinition, ToolResult, LLMResponse, ContentBlock, TokenUsage } from '../../../core/types.js';
 import { ProtocolAdapter } from './base.js';
 import type { StreamCallbacks, StreamResult } from './base.js';
+import { generateUuid } from '../../../utils/uuid.js';
 
 const PROMPT_CACHING_ENABLED = !process.env.DISABLE_PROMPT_CACHING;
 
@@ -215,6 +216,7 @@ export class AnthropicAdapter extends ProtocolAdapter {
     return {
       role: 'assistant',
       content: msg.content as ContentBlock[],
+      uuid: generateUuid(),
     };
   }
 
@@ -229,6 +231,7 @@ export class AnthropicAdapter extends ProtocolAdapter {
     return {
       role: 'user',
       content,
+      uuid: generateUuid(),
     };
   }
 
@@ -308,6 +311,7 @@ export class AnthropicAdapter extends ProtocolAdapter {
           role: 'assistant',
           content: finalMessage.content as ContentBlock[],
           usage,
+          uuid: generateUuid(),
         },
       };
     } catch (error: unknown) {
@@ -320,6 +324,7 @@ export class AnthropicAdapter extends ProtocolAdapter {
           assistantMessage: {
             role: 'assistant',
             content: collectedText ? [{ type: 'text' as const, text: collectedText }] : [],
+            uuid: generateUuid(),
           },
         };
       }

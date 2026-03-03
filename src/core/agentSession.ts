@@ -4,6 +4,7 @@
  */
 
 import type { AgentType, Message } from './types.js';
+import { generateUuid } from '../utils/uuid.js';
 
 /**
  * Agent 会话
@@ -74,6 +75,7 @@ export class AgentSessionStore {
     session.history.push({
       role: 'user',
       content: message,
+      uuid: generateUuid(),
     });
 
     session.status = 'running';

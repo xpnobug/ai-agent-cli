@@ -7,6 +7,7 @@ import type { Message, ToolDefinition, ToolResult, LLMResponse, ContentBlock } f
 import { ProtocolAdapter } from './base.js';
 import type { StreamCallbacks, StreamResult } from './base.js';
 import { toolResultContentToText } from '../../../core/toolResult.js';
+import { generateUuid } from '../../../utils/uuid.js';
 
 export class GeminiAdapter extends ProtocolAdapter {
   private client!: GoogleGenerativeAI;
@@ -171,6 +172,7 @@ export class GeminiAdapter extends ProtocolAdapter {
     return {
       role: 'assistant',
       content,
+      uuid: generateUuid(),
     };
   }
 
@@ -185,6 +187,7 @@ export class GeminiAdapter extends ProtocolAdapter {
     return {
       role: 'user',
       content,
+      uuid: generateUuid(),
     };
   }
 
@@ -312,6 +315,7 @@ export class GeminiAdapter extends ProtocolAdapter {
           assistantMessage: {
             role: 'assistant',
             content: fullText ? [{ type: 'text' as const, text: fullText }] : [],
+            uuid: generateUuid(),
           },
         };
       }
@@ -324,12 +328,13 @@ export class GeminiAdapter extends ProtocolAdapter {
         textBlocks: fullText ? [fullText] : [],
         toolCalls: [],
         stopReason: 'interrupted',
-        assistantMessage: {
-          role: 'assistant',
-          content: fullText ? [{ type: 'text' as const, text: fullText }] : [],
-        },
-      };
-    }
+      assistantMessage: {
+        role: 'assistant',
+        content: fullText ? [{ type: 'text' as const, text: fullText }] : [],
+        uuid: generateUuid(),
+      },
+    };
+  }
 
     // 构建 assistant message
     const contentBlocks: ContentBlock[] = [];
@@ -342,7 +347,7 @@ export class GeminiAdapter extends ProtocolAdapter {
       textBlocks: fullText ? [fullText] : [],
       toolCalls,
       stopReason: toolCalls.length > 0 ? 'tool_use' : 'stop',
-      assistantMessage: { role: 'assistant', content: contentBlocks },
+      assistantMessage: { role: 'assistant', content: contentBlocks, uuid: generateUuid() },
     };
   }
 }

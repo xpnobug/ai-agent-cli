@@ -6,6 +6,7 @@
 import TurndownService from 'turndown';
 import { getFetchCache } from './fetchCache.js';
 import type { ProtocolAdapter } from '../../services/ai/adapters/base.js';
+import { generateUuid } from '../../utils/uuid.js';
 
 /**
  * 获取网页内容并转换为 Markdown
@@ -162,7 +163,7 @@ ${content}
 请直接回答用户的问题，不要重复网页内容。`;
 
     const systemPrompt = '你是一个信息提取助手。从提供的网页内容中准确提取用户请求的信息。';
-    const messages = [{ role: 'user' as const, content: extractionPrompt }];
+    const messages = [{ role: 'user' as const, content: extractionPrompt, uuid: generateUuid() }];
     const rawResponse = await adapter.createMessage(
       systemPrompt,
       messages,

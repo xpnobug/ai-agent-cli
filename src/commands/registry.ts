@@ -26,6 +26,7 @@ export interface SlashCommandContext {
   compressor?: ContextCompressor;
   systemPrompt?: string;
   tokenTracker?: TokenTracker;
+  resumeSession?: (identifier?: string) => Promise<string | void>;
 }
 
 /**

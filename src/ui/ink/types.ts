@@ -3,6 +3,7 @@
  */
 
 import type { PermissionDecision } from '../../core/permissions.js';
+import type { SessionListItem } from '../../services/session/sessionResume.js';
 
 /**
  * Banner 配置接口
@@ -98,6 +99,11 @@ export type FocusTarget =
       questions: AskUserQuestionDef[];
       initialAnswers?: Record<string, string>;
       resolve: (r: AskUserQuestionResult | null) => void;
+    }
+  | {
+      type: 'session_selector';
+      sessions: SessionListItem[];
+      resolve: (r: number | null) => void;
     };
 
 /**

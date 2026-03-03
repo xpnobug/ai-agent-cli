@@ -7,6 +7,7 @@ import type { Message, ToolDefinition, ToolResult, LLMResponse, ContentBlock, To
 import { ProtocolAdapter } from './base.js';
 import type { StreamCallbacks, StreamResult } from './base.js';
 import { toolResultContentToText } from '../../../core/toolResult.js';
+import { generateUuid } from '../../../utils/uuid.js';
 
 export class OpenAIAdapter extends ProtocolAdapter {
   private client!: OpenAI;
@@ -186,6 +187,7 @@ export class OpenAIAdapter extends ProtocolAdapter {
     return {
       role: 'assistant',
       content,
+      uuid: generateUuid(),
     };
   }
 
@@ -200,6 +202,7 @@ export class OpenAIAdapter extends ProtocolAdapter {
     return {
       role: 'user',
       content,
+      uuid: generateUuid(),
     };
   }
 
@@ -336,6 +339,7 @@ export class OpenAIAdapter extends ProtocolAdapter {
           assistantMessage: {
             role: 'assistant',
             content: textContent ? [{ type: 'text' as const, text: textContent }] : [],
+            uuid: generateUuid(),
           },
         };
       }
@@ -348,12 +352,13 @@ export class OpenAIAdapter extends ProtocolAdapter {
         textBlocks: textContent ? [textContent] : [],
         toolCalls: [],
         stopReason: 'interrupted',
-        assistantMessage: {
-          role: 'assistant',
-          content: textContent ? [{ type: 'text' as const, text: textContent }] : [],
-        },
-      };
-    }
+      assistantMessage: {
+        role: 'assistant',
+        content: textContent ? [{ type: 'text' as const, text: textContent }] : [],
+        uuid: generateUuid(),
+      },
+    };
+  }
 
     const textBlocks = textContent ? [textContent] : [];
     const toolCalls = Array.from(toolCallMap.values()).map((tc) => ({
@@ -387,7 +392,7 @@ export class OpenAIAdapter extends ProtocolAdapter {
       toolCalls,
       stopReason: finishReason === 'tool_calls' ? 'tool_calls' : finishReason,
       usage,
-      assistantMessage: { role: 'assistant', content, usage },
+      assistantMessage: { role: 'assistant', content, usage, uuid: generateUuid() },
     };
   }
 }

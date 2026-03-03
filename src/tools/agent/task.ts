@@ -11,6 +11,7 @@ import { getToolsForAgentType } from '../definitions.js';
 import { createSubagentSystemPrompt } from '../../core/prompts.js';
 import { getTheme } from '../../ui/theme.js';
 import { getAgentConfig } from '../../core/agents.js';
+import { generateUuid } from '../../utils/uuid.js';
 
 /**
  * 子代理任务选项
@@ -254,6 +255,7 @@ async function executeSubagent(
       {
         role: 'user',
         content: prompt,
+        uuid: generateUuid(),
       },
     ];
 
@@ -286,6 +288,7 @@ async function executeSubagent(
         maxTurns: agentConfig.maxTurns || 10,
         silent: true, // 静默模式，不打印工具调用
         abortController, // 传入中断控制器
+        persistSession: false,
         onToolCall: (name, count, elapsed) => {
           progress.update(name, count, elapsed);
         },

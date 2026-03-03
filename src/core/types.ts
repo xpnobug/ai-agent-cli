@@ -71,6 +71,7 @@ export interface Message {
   role: 'user' | 'assistant';
   content: MessageContent;
   usage?: TokenUsage;  // API 返回的 token 使用数据
+  uuid: string;
 }
 
 // 从响应中提取的工具调用

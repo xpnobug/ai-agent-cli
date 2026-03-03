@@ -31,6 +31,7 @@ export interface AgentLoopOptions {
   abortController?: AbortController | HierarchicalAbortController;
   tokenTracker?: TokenTracker;
   uiController?: UIController;
+  persistSession?: boolean;
 }
 
 /**

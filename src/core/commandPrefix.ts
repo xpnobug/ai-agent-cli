@@ -4,6 +4,7 @@
 
 import type { ProtocolAdapter } from '../services/ai/adapters/base.js';
 import type { Message } from './types.js';
+import { generateUuid } from '../utils/uuid.js';
 
 export type CommandPrefixResult =
   | {
@@ -171,7 +172,7 @@ async function queryCommandPrefix(
   maxTokens: number
 ): Promise<string> {
   const { systemPrompt, userPrompt } = buildBashCommandPrefixDetectionPrompt(command);
-  const messages: Message[] = [{ role: 'user', content: userPrompt }];
+  const messages: Message[] = [{ role: 'user', content: userPrompt, uuid: generateUuid() }];
   const response = await adapter.createMessage(systemPrompt, messages, [], maxTokens);
   const extracted = adapter.extractTextAndToolCalls(response);
   const raw = extracted.textBlocks.join('\n');

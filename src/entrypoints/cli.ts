@@ -37,6 +37,11 @@ import { patchConsole } from '../ui/ink/patchConsole.js';
 import { runSkill } from '../tools/ai/skill.js';
 import type { Message, ContentBlock } from '../core/types.js';
 import type { SlashCommandContext } from '../commands/registry.js';
+import { generateUuid } from '../utils/uuid.js';
+import { appendSessionJsonlFromMessage, appendSessionSummaryRecord } from '../services/session/sessionLog.js';
+import { loadSessionMessages } from '../services/session/sessionLoad.js';
+import { listSessions, resolveResumeSessionIdentifier } from '../services/session/sessionResume.js';
+import { getSessionId, setSessionId } from '../services/session/sessionId.js';
 
 // 模块级控制变量
 let rootAbort: HierarchicalAbortController | null = null;
@@ -182,7 +187,7 @@ async function main(): Promise<void> {
 
     // 14. 触发 SessionStart Hook
     if (hookManager.hasHooksFor('SessionStart')) {
-      await hookManager.emit('SessionStart', { workdir: config.workdir });
+      await hookManager.emit('SessionStart', { workdir: config.workdir, sessionId: getSessionId() });
     }
 
     // 15. 设置终端标题
@@ -211,6 +216,84 @@ async function main(): Promise<void> {
     // 20. 对话历史
     const history: Message[] = [];
 
+    async function resumeSession(identifier?: string): Promise<string | void> {
+      const cwd = config.workdir;
+
+      if (identifier) {
+        const resolved = resolveResumeSessionIdentifier({ cwd, identifier });
+        if (resolved.kind === 'not_found') {
+          return `未找到会话: ${resolved.identifier}`;
+        }
+        if (resolved.kind === 'ambiguous') {
+          return `匹配到多个会话: ${resolved.identifier}\n请使用完整 sessionId:\n${resolved.matchingSessionIds.join('\n')}`;
+        }
+        if (resolved.kind === 'different_directory') {
+          const dir = resolved.otherCwd ? `(${resolved.otherCwd})` : '(未知目录)';
+          return `该会话不属于当前目录 ${dir}，请在对应目录下执行 /resume ${resolved.sessionId}`;
+        }
+
+      const messages = loadSessionMessages({ cwd, sessionId: resolved.sessionId });
+      setSessionId(resolved.sessionId);
+      history.length = 0;
+      history.push(...messages);
+      reminderManager.reset();
+      if (messages.length > 0) {
+        reminderManager.markFirstMessageSent();
+      }
+      tokenTracker?.reset();
+      inkController.hydrateHistory(messages);
+      if (messages.length > 0) {
+        const currentTokens = countTokensFromUsage(messages);
+        const percentage = getTokenPercentage(currentTokens, modelContextLength);
+        const modelDisplay = getModelDisplayName(config.model);
+        const cacheUsage = getCacheTokensFromUsage(messages);
+        const cacheText = cacheUsage.total > 0
+          ? ` · cache r:${formatTokenCount(cacheUsage.cacheReadTokens)} c:${formatTokenCount(cacheUsage.cacheCreationTokens)}`
+          : '';
+        const tokenInfo = `[${config.provider}] ${modelDisplay}: ${formatTokenCount(currentTokens)}/${formatTokenCount(modelContextLength)} (${percentage}%)${cacheText}`;
+        appStore.setTokenInfo(tokenInfo);
+      }
+      return `已恢复会话: ${resolved.sessionId}`;
+      }
+
+      const sessions = listSessions({ cwd });
+      if (sessions.length === 0) {
+        return '未找到可恢复的会话';
+      }
+
+      const index = await inkController.requestSessionResume(sessions);
+      if (index === null) {
+        return '已取消恢复会话';
+      }
+      const selected = sessions[index];
+      if (!selected) {
+        return '选择无效';
+      }
+
+      const messages = loadSessionMessages({ cwd, sessionId: selected.sessionId });
+      setSessionId(selected.sessionId);
+      history.length = 0;
+      history.push(...messages);
+      reminderManager.reset();
+      if (messages.length > 0) {
+        reminderManager.markFirstMessageSent();
+      }
+      tokenTracker?.reset();
+      inkController.hydrateHistory(messages);
+      if (messages.length > 0) {
+        const currentTokens = countTokensFromUsage(messages);
+        const percentage = getTokenPercentage(currentTokens, modelContextLength);
+        const modelDisplay = getModelDisplayName(config.model);
+        const cacheUsage = getCacheTokensFromUsage(messages);
+        const cacheText = cacheUsage.total > 0
+          ? ` · cache r:${formatTokenCount(cacheUsage.cacheReadTokens)} c:${formatTokenCount(cacheUsage.cacheCreationTokens)}`
+          : '';
+        const tokenInfo = `[${config.provider}] ${modelDisplay}: ${formatTokenCount(currentTokens)}/${formatTokenCount(modelContextLength)} (${percentage}%)${cacheText}`;
+        appStore.setTokenInfo(tokenInfo);
+      }
+      return `已恢复会话: ${selected.sessionId}`;
+    }
+
     // 21. 创建命令上下文
     const cmdContext: SlashCommandContext = {
       workdir: config.workdir,
@@ -228,6 +311,7 @@ async function main(): Promise<void> {
       compressor,
       systemPrompt,
       tokenTracker,
+      resumeSession,
     };
 
     // 22. 用户输入处理回调（由 Ink UserInput 组件触发）
@@ -240,7 +324,7 @@ async function main(): Promise<void> {
         // 检查退出命令
         if (!text || ['exit', 'quit', 'q'].includes(text.toLowerCase())) {
           if (hookManager.hasHooksFor('SessionEnd')) {
-            await hookManager.emit('SessionEnd', { workdir: config.workdir });
+          await hookManager.emit('SessionEnd', { workdir: config.workdir, sessionId: getSessionId() });
           }
           mcpRegistry.disconnectAll();
           unmountInk?.();
@@ -262,7 +346,7 @@ async function main(): Promise<void> {
 
         // UserPromptSubmit Hook
         if (hookManager.hasHooksFor('UserPromptSubmit')) {
-          await hookManager.emit('UserPromptSubmit', { workdir: config.workdir });
+          await hookManager.emit('UserPromptSubmit', { workdir: config.workdir, sessionId: getSessionId() });
         }
 
         // 处理斜杠命令（内置命令 + 自定义命令/技能）
@@ -309,7 +393,7 @@ async function main(): Promise<void> {
         // 自动上下文压缩
         if (compressor.shouldCompact(history)) {
           if (hookManager.hasHooksFor('PreCompact')) {
-            await hookManager.emit('PreCompact', { workdir: config.workdir });
+            await hookManager.emit('PreCompact', { workdir: config.workdir, sessionId: getSessionId() });
           }
 
           try {
@@ -317,9 +401,15 @@ async function main(): Promise<void> {
             history.length = 0;
             history.push(...compactResult.newHistory);
             inkController.showInfo(`[上下文已自动压缩: ${compactResult.originalLength} → ${compactResult.compressedLength} 条消息]`);
+            if (compactResult.summary) {
+              const leaf = [...compactResult.newHistory].reverse().find((msg) => msg.role === 'assistant')?.uuid;
+              if (leaf) {
+                appendSessionSummaryRecord({ summary: compactResult.summary, leafUuid: leaf });
+              }
+            }
 
             if (hookManager.hasHooksFor('PostCompact')) {
-              await hookManager.emit('PostCompact', { workdir: config.workdir });
+              await hookManager.emit('PostCompact', { workdir: config.workdir, sessionId: getSessionId() });
             }
           } catch {
             // 压缩失败不影响正常对话
@@ -343,10 +433,15 @@ async function main(): Promise<void> {
         reminderManager.markFirstMessageSent();
 
         // 添加用户消息到历史
-        history.push({
+        const userMessage: Message = {
           role: 'user',
           content: userContent,
-        });
+          uuid: generateUuid(),
+        };
+        history.push(userMessage);
+
+        // 记录用户消息到会话日志（对标 Kode）
+        appendSessionJsonlFromMessage({ message: userMessage });
 
         // 记录开始时间
         const startTime = Date.now();
@@ -440,7 +535,7 @@ async function main(): Promise<void> {
     // 23. 退出处理（Ctrl+D 触发）
     function handleExit(): void {
       if (hookManager.hasHooksFor('SessionEnd')) {
-        hookManager.emit('SessionEnd', { workdir: config.workdir }).catch(() => {});
+        hookManager.emit('SessionEnd', { workdir: config.workdir, sessionId: getSessionId() }).catch(() => {});
       }
       mcpRegistry.disconnectAll();
     }

@@ -6,6 +6,7 @@
 import type { Message } from './types.js';
 import type { ProtocolAdapter } from '../services/ai/adapters/base.js';
 import { toolResultContentToText } from './toolResult.js';
+import { generateUuid } from '../utils/uuid.js';
 
 /**
  * 压缩配置
@@ -110,6 +111,7 @@ export class ContextCompressor {
     const summaryMessage: Message = {
       role: 'user',
       content: `[上下文摘要]\n\n以下是之前对话的压缩摘要：\n\n${summary}\n\n---\n请基于以上上下文继续对话。`,
+      uuid: generateUuid(),
     };
 
     const newHistory: Message[] = [summaryMessage, ...toPreserve];
@@ -152,6 +154,7 @@ export class ContextCompressor {
         {
           role: 'user',
           content: `${SUMMARY_PROMPT}\n\n---\n\n对话历史:\n\n${conversationText}`,
+          uuid: generateUuid(),
         },
       ];
 

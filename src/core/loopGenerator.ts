@@ -22,6 +22,9 @@ import { withRetry } from '../utils/retry.js';
 import { DEFAULTS, TOOL_REJECT_MESSAGE } from './constants.js';
 import { getCommandSubcommandPrefix } from './commandPrefix.js';
 import { normalizeToolExecutionResult, toolResultContentToText } from './toolResult.js';
+import { generateUuid } from '../utils/uuid.js';
+import { appendSessionJsonlFromMessage } from '../services/session/sessionLog.js';
+import { getSessionId } from '../services/session/sessionId.js';
 
 /**
  * Generator 版代理循环配置
@@ -35,6 +38,7 @@ export interface AgentLoopGeneratorOptions {
   hookManager?: HookManager;
   abortController?: AbortController | HierarchicalAbortController;
   tokenTracker?: TokenTracker;
+  persistSession?: boolean;
 }
 
 /**
@@ -101,6 +105,7 @@ export async function* agentLoopGenerator(
   let totalToolCount = 0;
   const startTime = Date.now();
   const reminderManager = getReminderManager();
+  const shouldPersistSession = options.persistSession !== false && process.env.NODE_ENV !== 'test';
 
   while (turns < maxTurns) {
     turns++;
@@ -242,10 +247,15 @@ export async function* agentLoopGenerator(
           yield { type: 'info', message: '[生成已中断]' };
         }
         if (streamedText) {
-          currentHistory.push({
+          const partialMessage: Message = {
             role: 'assistant',
             content: [{ type: 'text', text: streamedText }],
-          });
+            uuid: generateUuid(),
+          };
+          currentHistory.push(partialMessage);
+          if (shouldPersistSession) {
+            appendSessionJsonlFromMessage({ message: partialMessage });
+          }
         }
         break;
       }
@@ -265,6 +275,9 @@ export async function* agentLoopGenerator(
 
       // 7. 将助手消息添加到历史
       currentHistory.push(streamResult!.assistantMessage);
+      if (shouldPersistSession) {
+        appendSessionJsonlFromMessage({ message: streamResult!.assistantMessage });
+      }
 
       // 8. 没有工具调用则结束
       if (isFinalResponse) {
@@ -307,6 +320,9 @@ export async function* agentLoopGenerator(
             ];
             const toolResultsMessage = adapter.formatToolResults(toolResults);
             currentHistory.push(toolResultsMessage);
+            if (shouldPersistSession) {
+              appendSessionJsonlFromMessage({ message: toolResultsMessage });
+            }
             if (!silent) {
               eventQueue.enqueue({
                 type: 'tool_result',
@@ -328,6 +344,7 @@ export async function* agentLoopGenerator(
               await hookManager.emit('PermissionRequest', {
                 toolName: toolCall.name,
                 toolInput: toolCall.input,
+                sessionId: getSessionId(),
               });
             }
 
@@ -393,6 +410,9 @@ export async function* agentLoopGenerator(
               ];
               const toolResultsMessage = adapter.formatToolResults(toolResults);
               currentHistory.push(toolResultsMessage);
+              if (shouldPersistSession) {
+                appendSessionJsonlFromMessage({ message: toolResultsMessage });
+              }
               if (!silent) {
                 eventQueue.enqueue({
                   type: 'tool_result',
@@ -417,6 +437,7 @@ export async function* agentLoopGenerator(
           const hookResults = await hookManager.emit('PreToolUse', {
             toolName: toolCall.name,
             toolInput: toolCall.input,
+            sessionId: getSessionId(),
           });
 
           const blocked = hookResults.some((r: { blocked?: boolean }) => r.blocked);
@@ -459,6 +480,7 @@ export async function* agentLoopGenerator(
                 toolName: toolCall.name,
                 toolInput: toolCall.input,
                 toolOutput: result.uiContent,
+                sessionId: getSessionId(),
               });
           }
 
@@ -488,6 +510,7 @@ export async function* agentLoopGenerator(
               toolName: toolCall.name,
               toolInput: toolCall.input,
               error: errorMsg,
+              sessionId: getSessionId(),
             });
           }
 
@@ -523,6 +546,9 @@ export async function* agentLoopGenerator(
       // 12. 格式化工具结果并添加到历史
       const toolResultsMessage = adapter.formatToolResults(toolResults);
       currentHistory.push(toolResultsMessage);
+      if (shouldPersistSession) {
+        appendSessionJsonlFromMessage({ message: toolResultsMessage });
+      }
     } catch (error: unknown) {
       // 停止思考
       if (!silent) {
@@ -535,10 +561,15 @@ export async function* agentLoopGenerator(
           yield { type: 'info', message: '[生成已中断]' };
         }
         if (streamedText) {
-          currentHistory.push({
+          const partialMessage: Message = {
             role: 'assistant',
             content: [{ type: 'text', text: streamedText }],
-          });
+            uuid: generateUuid(),
+          };
+          currentHistory.push(partialMessage);
+          if (shouldPersistSession) {
+            appendSessionJsonlFromMessage({ message: partialMessage });
+          }
         }
         break;
       }

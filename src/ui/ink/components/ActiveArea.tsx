@@ -20,6 +20,7 @@ import type { AskUserQuestionDef } from '../types.js';
 import { QuestionPrompt } from './QuestionPrompt.js';
 import type { SlashCommandItem } from '../completion/types.js';
 import { ToolUseView } from './ToolUseView.js';
+import { SessionSelector } from './SessionSelector.js';
 
 export interface DynamicAreaProps {
   focus: FocusTarget;
@@ -80,6 +81,13 @@ export function DynamicArea({
           questions={focus.questions as AskUserQuestionDef[]}
           initialAnswers={focus.initialAnswers}
           onResolve={focus.resolve}
+        />
+      )}
+      {focus?.type === 'session_selector' && (
+        <SessionSelector
+          sessions={focus.sessions}
+          onSelect={(index) => focus.resolve(index)}
+          onCancel={() => focus.resolve(null)}
         />
       )}
 

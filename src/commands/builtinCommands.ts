@@ -18,6 +18,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTheme, getThemeName, getAvailableThemes, setThemeByProvider } from '../ui/index.js';
 import { getStatusLineCommand, setStatusLineCommand } from '../services/ui/statusline.js';
+import { appendSessionSummaryRecord } from '../services/session/sessionLog.js';
 
 /**
  * /help 命令
@@ -93,6 +94,20 @@ export const historyCommand: SlashCommand = {
 };
 
 /**
+ * /resume 命令
+ */
+export const resumeCommand: SlashCommand = {
+  name: 'resume',
+  description: '恢复之前的会话',
+  async execute(args, context) {
+    if (!context.resumeSession) {
+      return '当前界面不支持恢复会话';
+    }
+    return await context.resumeSession(args?.trim() || undefined);
+  },
+};
+
+/**
  * /compact 命令 - 手动触发上下文压缩
  */
 export const compactCommand: SlashCommand = {
@@ -113,6 +128,13 @@ export const compactCommand: SlashCommand = {
       context.history.splice(0, context.history.length);
       for (const msg of result.newHistory as any[]) {
         context.history.push(msg);
+      }
+
+      if (result.summary) {
+        const leaf = [...result.newHistory].reverse().find((msg: any) => msg.role === 'assistant')?.uuid;
+        if (leaf) {
+          appendSessionSummaryRecord({ summary: result.summary, leafUuid: leaf });
+        }
       }
 
       return '上下文已压缩';
@@ -542,6 +564,7 @@ export function getBuiltinCommands(): SlashCommand[] {
     configCommand,
     configSetCommand,
     historyCommand,
+    resumeCommand,
     compactCommand,
     costCommand,
     modelCommand,
