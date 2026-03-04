@@ -5,6 +5,7 @@
 
 import { execa } from 'execa';
 import { validateBashCommand, validateReadOnlyCommand, truncateOutput } from '../services/system/security.js';
+import { appendTaskOutput, readTaskOutput, touchTaskOutputFile } from '../services/session/taskOutputStore.js';
 
 const MAX_OUTPUT_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -22,6 +23,7 @@ export interface BackgroundTask {
   description?: string;
   status: BackgroundTaskStatus;
   output: string;
+  outputFile?: string;
   startTime: number;
   endTime?: number;
   exitCode?: number;
@@ -62,6 +64,8 @@ export class BackgroundTaskManager {
       startTime: Date.now(),
     };
 
+    task.outputFile = touchTaskOutputFile(id, workdir);
+
     this.tasks.set(id, task);
 
     // 启动进程
@@ -75,9 +79,19 @@ export class BackgroundTaskManager {
 
     this.processes.set(id, proc);
 
+    // 实时写入输出
+    if (proc.all) {
+      proc.all.on('data', (chunk) => {
+        const text = chunk.toString('utf8');
+        appendTaskOutput(id, text, workdir);
+        task.output = truncateOutput(task.output + text, MAX_OUTPUT_SIZE);
+      });
+    }
+
     // 监听完成
     proc.then((result) => {
-      task.output = truncateOutput(result.all || '', MAX_OUTPUT_SIZE);
+      const finalOutput = task.output || readTaskOutput(id, workdir);
+      task.output = truncateOutput(finalOutput || result.all || '', MAX_OUTPUT_SIZE);
       task.exitCode = result.exitCode;
       task.endTime = Date.now();
       task.status = result.exitCode === 0 ? 'completed' : 'failed';

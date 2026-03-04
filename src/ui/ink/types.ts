@@ -4,6 +4,7 @@
 
 import type { PermissionDecision } from '../../core/permissions.js';
 import type { SessionListItem } from '../../services/session/sessionResume.js';
+import type { TaskListItem } from '../../services/session/taskList.js';
 
 /**
  * Banner 配置接口
@@ -104,6 +105,11 @@ export type FocusTarget =
       type: 'session_selector';
       sessions: SessionListItem[];
       resolve: (r: number | null) => void;
+    }
+  | {
+      type: 'task_selector';
+      tasks: TaskListItem[];
+      resolve: (r: { action: 'output' | 'stop'; taskId: string } | null) => void;
     };
 
 /**

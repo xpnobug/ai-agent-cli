@@ -91,6 +91,11 @@ export abstract class ProtocolAdapter {
   ): Promise<StreamResult>;
 
   /**
+   * 克隆当前适配器并切换模型
+   */
+  abstract cloneWithModel(model: string): Promise<ProtocolAdapter>;
+
+  /**
    * 获取模型名称
    */
   getModel(): string {

@@ -19,6 +19,10 @@ import { join } from 'node:path';
 import { setTheme, getThemeName, getAvailableThemes, setThemeByProvider } from '../ui/index.js';
 import { getStatusLineCommand, setStatusLineCommand } from '../services/ui/statusline.js';
 import { appendSessionSummaryRecord } from '../services/session/sessionLog.js';
+import { listTaskItems } from '../services/session/taskList.js';
+import type { TaskListItem } from '../services/session/taskList.js';
+import { runTaskOutput } from '../tools/system/taskOutput.js';
+import { runTaskStop } from '../tools/filesystem/bash.js';
 
 /**
  * /help 命令
@@ -555,6 +559,72 @@ export const statuslineCommand: SlashCommand = {
 };
 
 /**
+ * /tasks 命令 - 查看后台任务
+ */
+export const tasksCommand: SlashCommand = {
+  name: 'tasks',
+  description: '查看后台任务列表',
+  async execute(_args, context) {
+    const tasks = listTaskItems();
+
+    if (tasks.length === 0) {
+      return '当前没有后台任务';
+    }
+
+    if (!context.requestTaskManager) {
+      return renderTasksAsText(tasks);
+    }
+
+    const selection = await context.requestTaskManager(tasks);
+    if (!selection) {
+      return '已取消';
+    }
+
+    if (selection.action === 'stop') {
+      const result = await runTaskStop(selection.taskId);
+      const isError = result.startsWith('错误:');
+      if (context.showToolResult) {
+        context.showToolResult('TaskStop', { task_id: selection.taskId }, result, isError);
+        return undefined;
+      }
+      return result;
+    }
+
+    const output = await runTaskOutput(
+      { task_id: selection.taskId, block: false },
+      undefined
+    );
+    const text = output.uiContent ?? (typeof output.content === 'string' ? output.content : '');
+    if (context.showToolResult) {
+      context.showToolResult(
+        'TaskOutput',
+        { task_id: selection.taskId, block: false },
+        text,
+        Boolean(output.isError)
+      );
+      return undefined;
+    }
+    return text;
+  },
+};
+
+function renderTasksAsText(tasks: TaskListItem[]): string {
+  const lines: string[] = ['后台任务:'];
+
+  for (const task of tasks) {
+    const elapsed = task.completedAt
+      ? ((task.completedAt - task.startedAt) / 1000).toFixed(1)
+      : ((Date.now() - task.startedAt) / 1000).toFixed(1);
+    const retrieved = task.taskType === 'agent' && task.retrieved ? ' · 已读取' : '';
+    const typeLabel = task.taskType === 'bash' ? 'Bash' : '子代理';
+    lines.push(`- ${task.id} · ${typeLabel} · ${task.status}${retrieved} · ${elapsed}s · ${task.description}`);
+  }
+
+  lines.push('提示: 让助手使用 TaskOutput 获取指定任务输出。');
+  return lines.join('\n');
+}
+
+/**
  * 获取所有内置命令
  */
 export function getBuiltinCommands(): SlashCommand[] {
@@ -579,5 +649,6 @@ export function getBuiltinCommands(): SlashCommand[] {
     debugCommand,
     themeCommand,
     statuslineCommand,
+    tasksCommand,
   ];
 }

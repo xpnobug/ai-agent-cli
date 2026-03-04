@@ -14,6 +14,7 @@ import type { TokenTracker } from '../../utils/tokenTracker.js';
 import { setRequestStatus } from './requestStatus.js';
 import type { Message, ContentBlock } from '../../core/types.js';
 import type { SessionListItem } from '../../services/session/sessionResume.js';
+import type { TaskListItem } from '../../services/session/taskList.js';
 
 /**
  * 基于 Ink + AppStore 的 UI 控制器实现
@@ -379,6 +380,53 @@ export class InkUIController implements UIController {
           resolve(result);
         },
       });
+    });
+  }
+
+  /**
+   * 请求任务选择（/tasks）
+   */
+  async requestTaskManager(tasks: TaskListItem[]): Promise<{ action: 'output' | 'stop'; taskId: string } | null> {
+    return new Promise((resolve) => {
+      this.store.setFocus({
+        type: 'task_selector',
+        tasks,
+        resolve: (result) => {
+          this.store.setFocus(undefined);
+          resolve(result);
+        },
+      });
+    });
+  }
+
+  /**
+   * 直接记录命令触发的工具结果（不走 AgentEvent）
+   */
+  showToolResultFromCommand(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: string,
+    isError: boolean
+  ): void {
+    const toolUseId = `cmd_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const detail = input ? this._summarizeToolInput(toolName, input) : undefined;
+    if (input) {
+      this.toolInputById.set(toolUseId, input);
+    }
+    this.store.addCompleted({
+      type: 'tool_use',
+      toolUseId,
+      name: toolName,
+      detail,
+      status: isError ? 'error' : 'done',
+    });
+    this.store.addCompleted({
+      type: 'tool_result',
+      toolUseId,
+      name: toolName,
+      content: result,
+      isError,
+      input,
     });
   }
 

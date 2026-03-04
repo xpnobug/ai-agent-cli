@@ -48,6 +48,22 @@ export class MCPRegistry {
   }
 
   /**
+   * 手动注册 MCP 服务器（用于 ACP 注入）
+   */
+  registerServer(config: MCPServerConfig): void {
+    this.clients.set(config.name, new MCPClient(config));
+  }
+
+  /**
+   * 批量注册 MCP 服务器
+   */
+  registerServers(configs: MCPServerConfig[]): void {
+    for (const config of configs) {
+      this.registerServer(config);
+    }
+  }
+
+  /**
    * 连接所有服务器
    */
   async connectAll(): Promise<void> {

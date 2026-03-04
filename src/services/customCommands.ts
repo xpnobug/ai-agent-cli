@@ -104,7 +104,7 @@ function extractDescriptionFromMarkdown(markdown: string, fallback: string): str
 // ============================================================
 
 /**
- * 获取 Kode 用户目录
+ * 获取用户目录
  */
 function getKodeUserDir(): string {
     return path.join(homedir(), '.ai-agent');

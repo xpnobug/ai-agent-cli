@@ -4,7 +4,7 @@
  */
 
 import type { ToolDefinition, AgentType } from '../core/types.js';
-import { AGENT_TYPES, getAgentTypeDescriptions } from '../core/agents.js';
+import { getAgentTypeDescriptions, getAgentByType } from '../core/agents.js';
 import { DEFAULTS } from '../core/constants.js';
 import { getMCPBuiltinTools } from './mcp/mcpTools.js';
 
@@ -589,12 +589,12 @@ export const WEB_SEARCH_TOOL: ToolDefinition = {
 // 14. TaskOutput 工具（获取后台任务输出）
 export const TASK_OUTPUT_TOOL: ToolDefinition = {
   name: 'TaskOutput',
-  description: `获取后台任务的输出结果。
+  description: `获取正在运行或已完成的任务输出。
 
 功能:
-- 获取通过 bash(run_in_background=true) 启动的后台任务的输出
-- 支持阻塞等待和非阻塞查询
-- 返回任务状态、输出和退出码`,
+- 支持后台 bash 任务与后台子代理任务
+- 支持阻塞等待与非阻塞查询
+- 返回任务状态、输出与错误信息`,
   input_schema: {
     type: 'object',
     properties: {
@@ -647,28 +647,15 @@ function createTaskTool(): ToolDefinition {
 
 功能:
 - 子代理在隔离的上下文中运行
-- 不会看到父对话的历史
-- 自动选择合适的工具集
-- 支持后台运行和恢复
+- 可选继承或恢复历史
+- 支持后台运行并通过 TaskOutput 拉取结果
 
 子代理类型:
 ${agentDescriptions}
 
-使用场景:
-- **explore**: 搜索和分析代码库
-  例: "查找所有使用 auth 模块的文件"
-- **plan**: 设计实施策略
-  例: "设计数据库迁移策略"
-- **code**: 实现功能或修复 bug
-  例: "实现用户注册表单"
-- **bash**: 仅执行 bash 命令
-- **guide**: 查找文档和指南
-- **general**: 通用任务
-
 使用建议:
-- 对于文件搜索任务，优先使用 Task(explore) 以减少上下文
-- 复杂任务先用 Task(plan) 规划，再用 Task(code) 实现
-- description 应简短（3-5字），用于进度显示`,
+- description 应简短（3-5字），用于进度展示
+- prompt 需完整明确，子代理不会与你交互`,
     input_schema: {
       type: 'object',
       properties: {
@@ -680,9 +667,8 @@ ${agentDescriptions}
           type: 'string',
           description: '详细的任务提示词',
         },
-        agent_type: {
+        subagent_type: {
           type: 'string',
-          enum: ['explore', 'code', 'plan', 'bash', 'guide', 'general'],
           description: '子代理类型',
         },
         model: {
@@ -698,7 +684,7 @@ ${agentDescriptions}
           description: '恢复之前的 Agent 会话 ID（可选）。传入后续消息继续之前的对话。',
         },
       },
-      required: ['description', 'prompt', 'agent_type'],
+      required: ['description', 'prompt', 'subagent_type'],
     },
   };
 }
@@ -855,6 +841,26 @@ export const BASE_TOOLS: ToolDefinition[] = [
   ...getMCPBuiltinTools(),
 ];
 
+const SUBAGENT_DISALLOWED_TOOL_NAMES = new Set<string>([
+  'Task',
+  'TaskOutput',
+  'TaskStop',
+  'EnterPlanMode',
+  'ExitPlanMode',
+  'AskUserQuestion',
+]);
+
+function getToolNameFromSpec(spec: string): string {
+  const trimmed = spec.trim();
+  if (!trimmed) return trimmed;
+  const match = trimmed.match(/^([^(]+)\(([^)]+)\)$/);
+  if (!match) return trimmed;
+  const toolName = match[1]?.trim();
+  const ruleContent = match[2]?.trim();
+  if (!toolName || !ruleContent) return trimmed;
+  return toolName;
+}
+
 // 所有工具列表（含 Task，用于主代理）
 export const ALL_TOOLS: ToolDefinition[] = [
   ...BASE_TOOLS,
@@ -875,13 +881,28 @@ export function getAllTools(extraTools?: ToolDefinition[]): ToolDefinition[] {
  * 根据代理类型获取工具
  */
 export function getToolsForAgentType(agentType: AgentType): ToolDefinition[] {
-  const config = AGENT_TYPES[agentType];
+  const config = getAgentByType(agentType);
+  let tools = BASE_TOOLS.filter(
+    tool => !SUBAGENT_DISALLOWED_TOOL_NAMES.has(tool.name),
+  );
 
-  if (config.tools === '*') {
-    // 子代理不能调用 Task（防止无限递归）
-    return BASE_TOOLS;
+  if (!config) {
+    return tools;
   }
 
-  const allowedTools = config.tools as string[];
-  return BASE_TOOLS.filter(tool => allowedTools.includes(tool.name));
+  if (config.tools !== '*' && Array.isArray(config.tools)) {
+    const allowedToolNames = new Set(
+      config.tools.map(getToolNameFromSpec).filter(Boolean),
+    );
+    tools = tools.filter(tool => allowedToolNames.has(tool.name));
+  }
+
+  if (Array.isArray(config.disallowedTools) && config.disallowedTools.length > 0) {
+    const disallowed = new Set(
+      config.disallowedTools.map(getToolNameFromSpec).filter(Boolean),
+    );
+    tools = tools.filter(tool => !disallowed.has(tool.name));
+  }
+
+  return tools;
 }

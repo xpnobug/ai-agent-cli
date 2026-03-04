@@ -3,6 +3,7 @@
  */
 
 import { execa } from 'execa';
+import type { ToolExecutionResult } from '../../core/types.js';
 import { validateBashCommand, validateReadOnlyCommand, truncateOutput } from '../../services/system/security.js';
 import { getBackgroundTaskManager } from '../../core/backgroundTasks.js';
 import { DEFAULTS } from '../../core/constants.js';
@@ -30,7 +31,7 @@ export async function runBash(
   command: string,
   readOnly: boolean = false,
   options: BashOptions = {}
-): Promise<string> {
+): Promise<string | ToolExecutionResult> {
   const {
     runInBackground = false,
     timeout = DEFAULTS.bashTimeout,
@@ -50,11 +51,20 @@ export async function runBash(
     if (runInBackground) {
       const manager = getBackgroundTaskManager();
       const task = manager.startTask(workdir, command, readOnly, timeout, description);
-      return JSON.stringify({
-        taskId: task.id,
-        status: 'running',
-        message: `后台任务已启动: ${task.id}`,
-      });
+      const outputFile = task.outputFile ? `输出写入: ${task.outputFile}` : '';
+      const text = `命令已在后台运行，任务 ID: ${task.id}${outputFile ? `。${outputFile}` : ''}`;
+      return {
+        content: text,
+        uiContent: text,
+        rawOutput: {
+          taskId: task.id,
+          status: task.status,
+          command: task.command,
+          description: task.description,
+          outputFile: task.outputFile ?? null,
+        },
+        terminalId: task.id,
+      };
     }
 
     // 前台执行

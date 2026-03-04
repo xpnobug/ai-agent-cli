@@ -312,10 +312,13 @@ async function main(): Promise<void> {
       systemPrompt,
       tokenTracker,
       resumeSession,
+      requestTaskManager: (tasks) => inkController.requestTaskManager(tasks),
+      showToolResult: (toolName, input, result, isError) =>
+        inkController.showToolResultFromCommand(toolName, input, result, isError),
     };
 
     // 22. 用户输入处理回调（由 Ink UserInput 组件触发）
-    // 对标 Kode stream-json：支持排队输入，串行处理
+    //  stream-json：支持排队输入，串行处理
     const pendingUserInputs: string[] = [];
     let isDrainingQueue = false;
 
@@ -440,7 +443,7 @@ async function main(): Promise<void> {
         };
         history.push(userMessage);
 
-        // 记录用户消息到会话日志（对标 Kode）
+        // 记录用户消息到会话日志
         appendSessionJsonlFromMessage({ message: userMessage });
 
         // 记录开始时间

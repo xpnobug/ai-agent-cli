@@ -21,6 +21,7 @@ import { QuestionPrompt } from './QuestionPrompt.js';
 import type { SlashCommandItem } from '../completion/types.js';
 import { ToolUseView } from './ToolUseView.js';
 import { SessionSelector } from './SessionSelector.js';
+import { TaskSelector } from './TaskSelector.js';
 
 export interface DynamicAreaProps {
   focus: FocusTarget;
@@ -87,6 +88,13 @@ export function DynamicArea({
         <SessionSelector
           sessions={focus.sessions}
           onSelect={(index) => focus.resolve(index)}
+          onCancel={() => focus.resolve(null)}
+        />
+      )}
+      {focus?.type === 'task_selector' && (
+        <TaskSelector
+          tasks={focus.tasks}
+          onAction={(action, taskId) => focus.resolve({ action, taskId })}
           onCancel={() => focus.resolve(null)}
         />
       )}

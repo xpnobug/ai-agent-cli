@@ -350,4 +350,9 @@ export class GeminiAdapter extends ProtocolAdapter {
       assistantMessage: { role: 'assistant', content: contentBlocks, uuid: generateUuid() },
     };
   }
+  async cloneWithModel(model: string): Promise<ProtocolAdapter> {
+    const adapter = new GeminiAdapter(this.apiKey, model, this.baseUrl);
+    await adapter.initializeClient();
+    return adapter;
+  }
 }

@@ -8,6 +8,8 @@ export interface NormalizedToolExecutionResult {
   content: ToolResultContent;
   uiContent: string;
   isError: boolean;
+  rawOutput?: Record<string, unknown>;
+  terminalId?: string;
 }
 
 function isErrorText(text: string): boolean {
@@ -33,6 +35,8 @@ export function normalizeToolExecutionResult(
     content: result.content,
     uiContent,
     isError: result.isError ?? isErrorText(uiContent),
+    rawOutput: result.rawOutput,
+    terminalId: result.terminalId,
   };
 }
 

@@ -2,9 +2,10 @@
  * 工具分发器 - 路由工具调用到具体实现
  */
 
-import type { ExecuteToolFunc, ToolExecutionResult } from '../core/types.js';
+import type { ExecuteToolFunc, ToolExecutionResult, ExecuteToolContext } from '../core/types.js';
 import { normalizeToolExecutionResult } from '../core/toolResult.js';
-import { runBash, runTaskOutput, runTaskStop } from './filesystem/bash.js';
+import { runBash, runTaskStop } from './filesystem/bash.js';
+import { runTaskOutput } from './system/taskOutput.js';
 import type { BashOptions } from './filesystem/bash.js';
 import { runRead, runWrite, runEdit } from './filesystem/fileOps.js';
 import { runGlob } from './search/glob.js';
@@ -47,7 +48,11 @@ export interface ToolExecutorConfig {
 export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
   const { workdir, skillLoader, adapter, systemPrompt, tools, agentType, mcpRegistry, abortController, askUserQuestion } = config;
 
-  return async (toolName: string, input: Record<string, unknown>): Promise<ToolExecutionResult> => {
+  return async (
+    toolName: string,
+    input: Record<string, unknown>,
+    context?: ExecuteToolContext
+  ): Promise<ToolExecutionResult> => {
     try {
       let result: string | ToolExecutionResult;
       switch (toolName) {
@@ -204,9 +209,8 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
 
         case 'TaskOutput':
           result = await runTaskOutput(
-            input.task_id as string,
-            input.block as boolean | undefined,
-            input.timeout as number | undefined
+            input,
+            abortController?.signal
           );
           break;
 
@@ -227,7 +231,7 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
           result = await runTask(
             input.description as string,
             input.prompt as string,
-            input.agent_type as AgentType,
+            input.subagent_type as AgentType,
             workdir,
             adapter,
             systemPrompt,
@@ -239,6 +243,8 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
               runInBackground: input.run_in_background as boolean | undefined,
               sessionId: input.resume as string | undefined,
               abortController: childAbort,
+              toolUseId: context?.toolUseId,
+              sessionIdForLog: context?.sessionId,
             }
           );
           break;

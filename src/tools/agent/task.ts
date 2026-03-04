@@ -1,17 +1,21 @@
 /**
  * 子代理任务执行器
- * 支持模型选择、后台运行、会话恢复
  */
 
-import type { AgentType, Message, ToolDefinition, ExecuteToolFunc } from '../../core/types.js';
+import type { AgentType, Message, ToolDefinition, ExecuteToolFunc, ContentBlock, ToolResultBlock, ToolExecutionResult } from '../../core/types.js';
 import type { ProtocolAdapter } from '../../services/ai/adapters/base.js';
 import type { HierarchicalAbortController } from '../../core/abort.js';
 import { agentLoop } from '../../core/loop.js';
 import { getToolsForAgentType } from '../definitions.js';
 import { createSubagentSystemPrompt } from '../../core/prompts.js';
-import { getTheme } from '../../ui/theme.js';
-import { getAgentConfig } from '../../core/agents.js';
 import { generateUuid } from '../../utils/uuid.js';
+import { getAgentByType, getAvailableAgentTypes } from '../../core/agents.js';
+import { generateAgentId } from '../../services/agent/storage.js';
+import { getAgentTranscript, saveAgentTranscript } from '../../services/agent/transcripts.js';
+import { upsertBackgroundAgentTask } from '../../services/session/backgroundAgentTasks.js';
+import { getSessionLogFilePath } from '../../services/session/sessionLog.js';
+import { getSessionId } from '../../services/session/sessionId.js';
+import { existsSync, readFileSync } from 'node:fs';
 
 /**
  * 子代理任务选项
@@ -21,140 +25,173 @@ export interface TaskOptions {
   runInBackground?: boolean;
   sessionId?: string; // 恢复之前的会话
   abortController?: HierarchicalAbortController; // 子代理中断控制器
+  toolUseId?: string; // 用于 fork context
+  sessionIdForLog?: string; // 用于读取主会话日志
 }
 
-/**
- * Agent 会话（用于恢复）
- */
-interface AgentSession {
-  id: string;
-  agentType: AgentType;
-  history: Message[];
-  status: 'running' | 'completed' | 'failed';
-  result?: string;
-  model?: string;
-  createdAt: number;
-  updatedAt: number;
+type TaskResultStatus = 'async_launched' | 'completed';
+
+const FORK_CONTEXT_TOOL_RESULT_TEXT = `### FORKING CONVERSATION CONTEXT ###
+### ENTERING SUB-AGENT ROUTINE ###
+Entered sub-agent context
+
+PLEASE NOTE: 
+- The messages above this point are from the main thread prior to sub-agent execution. They are provided as context only.
+- Context messages may include tool_use blocks for tools that are not available in the sub-agent context. You should only use the tools specifically provided to you in the system prompt.
+- Only complete the specific sub-agent task you have been assigned below.`;
+
+function createUserMessage(content: string | ContentBlock[]): Message {
+  return {
+    role: 'user',
+    content,
+    uuid: generateUuid(),
+  };
 }
 
-/**
- * Agent 会话存储
- */
-class AgentSessionStore {
-  private sessions = new Map<string, AgentSession>();
-  private nextId = 1;
-
-  create(agentType: AgentType, model?: string): AgentSession {
-    const id = `agent-${this.nextId++}`;
-    const session: AgentSession = {
-      id,
-      agentType,
-      history: [],
-      status: 'running',
-      model,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    this.sessions.set(id, session);
-    return session;
-  }
-
-  get(id: string): AgentSession | undefined {
-    return this.sessions.get(id);
-  }
-
-  update(id: string, updates: Partial<AgentSession>): void {
-    const session = this.sessions.get(id);
-    if (session) {
-      Object.assign(session, updates, { updatedAt: Date.now() });
+function readSessionMessages(sessionId: string): Message[] {
+  const filePath = getSessionLogFilePath({ cwd: process.cwd(), sessionId });
+  if (!existsSync(filePath)) return [];
+  try {
+    const raw = readFileSync(filePath, 'utf8');
+    const lines = raw.split('\n');
+    const messages: Message[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== 'object') continue;
+      if (parsed.type !== 'user' && parsed.type !== 'assistant') continue;
+      if (parsed.message && (parsed.message.role === 'user' || parsed.message.role === 'assistant')) {
+        messages.push(parsed.message as Message);
+      }
     }
-  }
-
-  list(): AgentSession[] {
-    return Array.from(this.sessions.values());
-  }
-}
-
-// 单例
-let sessionStore: AgentSessionStore | null = null;
-
-function getSessionStore(): AgentSessionStore {
-  if (!sessionStore) {
-    sessionStore = new AgentSessionStore();
-  }
-  return sessionStore;
-}
-
-/**
- * 子代理进度显示
- */
-class SubagentProgress {
-  private description: string;
-  private agentType: AgentType;
-  private toolCount = 0;
-  private startTime: number;
-  private theme = getTheme();
-
-  constructor(description: string, agentType: AgentType) {
-    this.description = description;
-    this.agentType = agentType;
-    this.startTime = Date.now();
-  }
-
-  /**
-   * 开始显示
-   */
-  start(): void {
-    process.stdout.write(
-      this.theme.textDim(`  [${this.agentType}] ${this.description}`)
-    );
-  }
-
-
-  /**
-   * 更新进度（同一行覆盖）
-   */
-  update(toolName: string, count: number, elapsed: number): void {
-    this.toolCount = count;
-
-    // 清除当前行并重写
-    process.stdout.write('\r\x1b[K');
-    process.stdout.write(
-      this.theme.textDim(
-        `  [${this.agentType}] ${this.description} ... ${toolName} (+${count} tools, ${elapsed.toFixed(1)}s)`
-      )
-    );
-  }
-
-  /**
-   * 完成显示
-   */
-  complete(): void {
-    const elapsed = (Date.now() - this.startTime) / 1000;
-    process.stdout.write('\r\x1b[K');
-    console.log(
-      this.theme.success(
-        `  [${this.agentType}] ${this.description} - done (${this.toolCount} tools, ${elapsed.toFixed(1)}s)`
-      )
-    );
-  }
-
-  /**
-   * 错误显示
-   */
-  error(message: string): void {
-    process.stdout.write('\r\x1b[K');
-    console.log(
-      this.theme.error(
-        `  [${this.agentType}] ${this.description} - error: ${message}`
-      )
-    );
+    return messages;
+  } catch {
+    return [];
   }
 }
 
-/**
- * 执行子代理任务
- */
+function buildForkContextForAgent(options: {
+  enabled: boolean;
+  prompt: string;
+  toolUseId: string | undefined;
+  sessionId: string;
+}): { forkContextMessages: Message[]; promptMessages: Message[] } {
+  const userPromptMessage = createUserMessage(options.prompt);
+
+  if (!options.enabled || !options.toolUseId) {
+    return {
+      forkContextMessages: [],
+      promptMessages: [userPromptMessage],
+    };
+  }
+
+  const mainMessages = readSessionMessages(options.sessionId);
+  if (!mainMessages || mainMessages.length === 0) {
+    return {
+      forkContextMessages: [],
+      promptMessages: [userPromptMessage],
+    };
+  }
+
+  let toolUseMessageIndex = -1;
+  let toolUseMessage: Message | null = null;
+  let taskToolUseBlock: ContentBlock | null = null;
+
+  for (let i = 0; i < mainMessages.length; i++) {
+    const msg = mainMessages[i];
+    if (msg?.role !== 'assistant') continue;
+    const blocks = Array.isArray(msg?.content) ? (msg.content as ContentBlock[]) : [];
+    const match = blocks.find(
+      b => b && b.type === 'tool_use' && b.id === options.toolUseId,
+    );
+    if (!match) continue;
+    toolUseMessageIndex = i;
+    toolUseMessage = msg;
+    taskToolUseBlock = match;
+    break;
+  }
+
+  if (toolUseMessageIndex === -1 || !toolUseMessage || !taskToolUseBlock) {
+    return {
+      forkContextMessages: [],
+      promptMessages: [userPromptMessage],
+    };
+  }
+
+  const forkContextMessages = mainMessages.slice(0, toolUseMessageIndex);
+
+  const toolUseOnlyAssistant: Message = {
+    ...toolUseMessage,
+    uuid: generateUuid(),
+    content: [taskToolUseBlock],
+  };
+
+  const forkContextToolResult: Message = createUserMessage([
+    {
+      type: 'tool_result',
+      tool_use_id: (taskToolUseBlock as any).id,
+      content: FORK_CONTEXT_TOOL_RESULT_TEXT,
+    } as ToolResultBlock,
+  ]);
+
+  return {
+    forkContextMessages,
+    promptMessages: [toolUseOnlyAssistant, forkContextToolResult, userPromptMessage],
+  };
+}
+
+async function resolveAdapter(
+  baseAdapter: ProtocolAdapter,
+  model?: string
+): Promise<ProtocolAdapter> {
+  const trimmed = typeof model === 'string' ? model.trim() : '';
+  if (!trimmed || trimmed === 'inherit' || trimmed === baseAdapter.getModel()) return baseAdapter;
+  if (typeof (baseAdapter as any).cloneWithModel === 'function') {
+    return await (baseAdapter as any).cloneWithModel(trimmed);
+  }
+  return baseAdapter;
+}
+
+function extractLastAssistantText(history: Message[]): string {
+  const lastAssistant = [...history].reverse().find(m => m.role === 'assistant');
+  if (!lastAssistant) return '(无输出)';
+
+  if (typeof lastAssistant.content === 'string') return lastAssistant.content;
+  const blocks = lastAssistant.content as ContentBlock[];
+  return blocks
+    .filter(b => b.type === 'text')
+    .map(b => (b.type === 'text' ? b.text : ''))
+    .join('\n')
+    .trim();
+}
+
+function asyncLaunchMessage(agentId: string): string {
+  const toolName = 'TaskOutput';
+  return `Async agent launched successfully.
+agentId: ${agentId} (This is an internal ID for your use, do not mention it to the user. Use this ID to retrieve results with ${toolName} when the agent finishes). 
+The agent is currently working in the background. If you have other tasks you you should continue working on them now. Wait to call ${toolName} until either:
+- If you want to check on the agent's progress - call ${toolName} with block=false to get an immediate update on the agent's status
+- If you run out of things to do and the agent is still running - call ${toolName} with block=true to idle and wait for the agent's result (do not use block=true unless you completely run out of things to do as it will waste time).`;
+}
+
+function buildUiContent(status: TaskResultStatus, output: {
+  description: string;
+  prompt: string;
+  summary: string;
+  agentId: string;
+}): string {
+  if (status === 'async_launched') {
+    return `已在后台启动子代理：${output.description} (agentId: ${output.agentId})`;
+  }
+  return output.summary || '(无输出)';
+}
+
 export async function runTask(
   description: string,
   prompt: string,
@@ -165,167 +202,165 @@ export async function runTask(
   _tools: ToolDefinition[],
   _executeTool: ExecuteToolFunc,
   taskOptions: TaskOptions = {}
-): Promise<string> {
-  const { model, runInBackground = false, sessionId, abortController } = taskOptions;
-  const store = getSessionStore();
-  const agentConfig = getAgentConfig(agentType);
+): Promise<string | ToolExecutionResult> {
+  const {
+    model,
+    runInBackground = false,
+    sessionId,
+    abortController,
+    toolUseId,
+    sessionIdForLog,
+  } = taskOptions;
 
-  // 后台运行模式
+  const availableTypes = getAvailableAgentTypes();
+  if (!availableTypes.includes(agentType)) {
+    return `错误: 未找到子代理类型 "${agentType}"。可用类型: ${availableTypes.join(', ')}`;
+  }
+
+  const agentConfig = getAgentByType(agentType);
+  if (!agentConfig) {
+    return `错误: 未找到子代理类型 "${agentType}"。`;
+  }
+
+  const agentId = sessionId || generateAgentId();
+  const baseTranscript = sessionId ? (getAgentTranscript(sessionId) ?? null) : [];
+
+  if (sessionId && baseTranscript === null) {
+    return `错误: 未找到 Agent 会话 "${sessionId}"`;
+  }
+
+  const effectivePrompt = prompt;
+  const forkContextEnabled = agentConfig.forkContext === true;
+  const { forkContextMessages, promptMessages } = buildForkContextForAgent({
+    enabled: forkContextEnabled,
+    prompt: effectivePrompt,
+    toolUseId,
+    sessionId: sessionIdForLog ?? getSessionId(),
+  });
+
+  const transcriptMessages: Message[] = [
+    ...(baseTranscript || []),
+    ...promptMessages,
+  ];
+
+  const messagesForQuery: Message[] = [
+    ...forkContextMessages,
+    ...transcriptMessages,
+  ];
+
+  const systemPrompt = createSubagentSystemPrompt(workdir, agentType);
+  const subagentTools = getToolsForAgentType(agentType);
+  const envSubagentModel =
+    process.env.AI_AGENT_SUBAGENT_MODEL ??
+    process.env.KODE_SUBAGENT_MODEL ??
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL;
+  const modelToUse =
+    typeof envSubagentModel === 'string' && envSubagentModel.trim()
+      ? envSubagentModel.trim()
+      : (model ?? agentConfig.model);
+  const subAdapter = await resolveAdapter(adapter, modelToUse);
+
   if (runInBackground) {
-    const session = store.create(agentType, model);
-
-    // 异步执行，不等待完成
-    executeSubagent(
-      description, prompt, agentType, workdir, adapter,
-      _systemPrompt, _tools, _executeTool, agentConfig, model, abortController
-    ).then((result) => {
-      store.update(session.id, {
-        status: 'completed',
-        result,
-      });
-    }).catch((error: unknown) => {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      store.update(session.id, {
-        status: 'failed',
-        result: `错误: ${errorMsg}`,
-      });
-    });
-
-    return JSON.stringify({
-      sessionId: session.id,
+    const bgAbortController = new AbortController();
+    const taskRecord: any = {
+      type: 'async_agent',
+      agentId,
+      description,
+      prompt: effectivePrompt,
       status: 'running',
-      message: `子代理已在后台启动: ${session.id}`,
-    });
-  }
+      startedAt: Date.now(),
+      messages: [...transcriptMessages],
+      abortController: bgAbortController,
+      done: Promise.resolve(),
+    };
 
-  // 恢复模式
-  if (sessionId) {
-    const session = store.get(sessionId);
-    if (!session) {
-      return `错误: 未找到会话 "${sessionId}"`;
-    }
+    taskRecord.done = (async () => {
+      try {
+        const history = await agentLoop(
+          messagesForQuery,
+          systemPrompt,
+          subagentTools,
+          subAdapter,
+          (toolName, input, context) => _executeTool(toolName, input, context),
+          {
+            maxTokens: agentConfig.maxTokens || 4096,
+            maxTurns: agentConfig.maxTurns || 10,
+            silent: true,
+            abortController: bgAbortController,
+            persistSession: true,
+            agentId,
+          }
+        );
 
-    if (session.status === 'running') {
-      return `会话 ${sessionId} 仍在运行中...`;
-    }
-
-    if (session.result) {
-      return session.result;
-    }
-
-    return `会话 ${sessionId} 状态: ${session.status}，无结果`;
-  }
-
-  // 前台执行
-  return await executeSubagent(
-    description, prompt, agentType, workdir, adapter,
-    _systemPrompt, _tools, _executeTool, agentConfig, model, abortController
-  );
-}
-
-/**
- * 实际执行子代理逻辑
- */
-async function executeSubagent(
-  description: string,
-  prompt: string,
-  agentType: AgentType,
-  workdir: string,
-  adapter: ProtocolAdapter,
-  _systemPrompt: string,
-  _tools: ToolDefinition[],
-  _executeTool: ExecuteToolFunc,
-  agentConfig: { maxTokens?: number; maxTurns?: number },
-  _model?: string,
-  abortController?: HierarchicalAbortController
-): Promise<string> {
-  const progress = new SubagentProgress(description, agentType);
-
-  try {
-    progress.start();
-
-    // 1. 根据 agentType 过滤工具
-    const subagentTools = getToolsForAgentType(agentType);
-
-    // 2. 创建子代理的系统提示词
-    const subagentSystem = createSubagentSystemPrompt(workdir, agentType, description);
-
-    // 3. 创建隔离的消息历史
-    const subagentHistory: Message[] = [
-      {
-        role: 'user',
-        content: prompt,
-        uuid: generateUuid(),
-      },
-    ];
-
-    // 4. 调用代理循环（静默模式 + 进度回调）
-    const resultHistory = await agentLoop(
-      subagentHistory,
-      subagentSystem,
-      subagentTools,
-      adapter,
-      // 创建子代理专用的 executeTool，传入 agentType 进行安全检查
-      (toolName, input) => {
-        // 为子代理创建带有 agentType 的执行函数
-        const { createExecuteTool } = require('../dispatcher.js');
-        const { getSkillLoader } = require('./skill.js');
-
-        const subExecutor = createExecuteTool({
-          workdir,
-          skillLoader: getSkillLoader(workdir + '/skills'),
-          adapter,
-          systemPrompt: _systemPrompt,
-          tools: _tools,
-          agentType, // 传入当前子代理类型
-          abortController, // 传入中断控制器
-        });
-
-        return subExecutor(toolName, input);
-      },
-      {
-        maxTokens: agentConfig.maxTokens || 4096,
-        maxTurns: agentConfig.maxTurns || 10,
-        silent: true, // 静默模式，不打印工具调用
-        abortController, // 传入中断控制器
-        persistSession: false,
-        onToolCall: (name, count, elapsed) => {
-          progress.update(name, count, elapsed);
-        },
+        const summary = extractLastAssistantText(history);
+        taskRecord.status = 'completed';
+        taskRecord.completedAt = Date.now();
+        taskRecord.resultText = summary;
+        taskRecord.messages = [...history];
+        upsertBackgroundAgentTask(taskRecord);
+        saveAgentTranscript(agentId, history);
+      } catch (e) {
+        taskRecord.status = 'failed';
+        taskRecord.completedAt = Date.now();
+        taskRecord.error = e instanceof Error ? e.message : String(e);
+        upsertBackgroundAgentTask(taskRecord);
       }
-    );
+    })();
 
-    // 5. 完成进度显示
-    progress.complete();
+    upsertBackgroundAgentTask(taskRecord);
 
-    // 6. 提取最后一条助手消息作为总结
-    const lastAssistantMsg = resultHistory
-      .slice()
-      .reverse()
-      .find((msg) => msg.role === 'assistant');
-
-    if (!lastAssistantMsg) {
-      return `子代理任务完成: ${description}\n(无输出)`;
-    }
-
-    // 提取文本内容
-    let summary = '';
-    if (typeof lastAssistantMsg.content === 'string') {
-      summary = lastAssistantMsg.content;
-    } else {
-      const textBlocks = lastAssistantMsg.content.filter((block) => block.type === 'text');
-      summary = textBlocks.map((block) => ('text' in block ? block.text : '')).join('\n\n');
-    }
-
-    return `子代理任务结果 (${description}, ${agentType}):
-
-${summary}
-
----
-子代理执行完成`;
-  } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    progress.error(errorMsg);
-    return `错误: 子代理执行失败: ${errorMsg}`;
+    return {
+      content: asyncLaunchMessage(agentId),
+      uiContent: buildUiContent('async_launched', {
+        description,
+        prompt: effectivePrompt,
+        summary: '',
+        agentId,
+      }),
+      rawOutput: {
+        agentId,
+        status: 'running',
+        description,
+        prompt: effectivePrompt,
+      },
+    };
   }
+
+  const resultHistory = await agentLoop(
+    messagesForQuery,
+    systemPrompt,
+    subagentTools,
+    subAdapter,
+    (toolName, input, context) => _executeTool(toolName, input, context),
+    {
+      maxTokens: agentConfig.maxTokens || 4096,
+      maxTurns: agentConfig.maxTurns || 10,
+      silent: true,
+      abortController,
+      persistSession: true,
+      agentId,
+    }
+  );
+
+  saveAgentTranscript(agentId, resultHistory);
+
+  const summary = extractLastAssistantText(resultHistory);
+  const assistantResult = `${summary}\n\nagentId: ${agentId} (for resuming to continue this agent's work if needed)`;
+
+  return {
+    content: assistantResult,
+    uiContent: buildUiContent('completed', {
+      description,
+      prompt: effectivePrompt,
+      summary,
+      agentId,
+    }),
+    rawOutput: {
+      agentId,
+      status: 'completed',
+      description,
+      prompt: effectivePrompt,
+      result: summary,
+    },
+  };
 }

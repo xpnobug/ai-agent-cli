@@ -52,7 +52,7 @@ export interface SkillInput {
 export interface TaskInput {
   description: string;
   prompt: string;
-  agent_type: AgentType;
+  subagent_type: AgentType;
 }
 
 // 工具输入联合类型

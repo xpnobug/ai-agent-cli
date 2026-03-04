@@ -2,7 +2,7 @@
  * 系统提示词生成 - 模块化设计（文件化模板）
  */
 
-import { getAgentTypeDescriptions, getAgentConfig } from './agents.js';
+import { getAgentTypeDescriptions, getAgentByType } from './agents.js';
 import type { AgentType } from './types.js';
 import { PROJECT_FILE, PRODUCT_NAME } from './constants.js';
 import { loadPromptWithVars } from '../services/promptLoader.js';
@@ -80,17 +80,24 @@ export function createSystemPrompt(
 /**
  * 创建子代理的系统提示词
  */
+export function getAgentBasePrompt(workdir: string): string {
+  return [
+    `${PRODUCT_NAME} 子代理模式：根据任务要求使用可用工具完成目标。`,
+    '回答应直接、简洁，不要写无关的说明或前后缀。',
+    getEnvInfo(workdir),
+  ].join('\n\n');
+}
+
 export function createSubagentSystemPrompt(
   workdir: string,
-  agentType: AgentType,
-  taskDescription: string
+  agentType: AgentType
 ): string {
-  const config = getAgentConfig(agentType);
-  return loadPromptWithVars('system/subagent-wrapper.md', {
-    agentSystemPrompt: config.systemPrompt,
-    taskDescription,
-    envInfo: getEnvInfo(workdir),
-  });
+  const basePrompt = getAgentBasePrompt(workdir);
+  const config = getAgentByType(agentType);
+  if (!config || !config.systemPrompt) {
+    return basePrompt;
+  }
+  return [basePrompt, config.systemPrompt].join('\n\n');
 }
 
 /**

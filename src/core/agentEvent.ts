@@ -15,9 +15,18 @@ export type AgentEvent =
   | { type: 'stream_done'; fullText: string }
   | { type: 'tool_queued'; toolUseId: string; toolName: string; input: Record<string, unknown> }
   | { type: 'tool_start'; toolUseId: string; toolName: string; input: Record<string, unknown> }
-  | { type: 'tool_result'; toolUseId: string; toolName: string; result: string; isError: boolean }
+  | {
+      type: 'tool_result';
+      toolUseId: string;
+      toolName: string;
+      result: string;
+      isError: boolean;
+      rawOutput?: Record<string, unknown>;
+      terminalId?: string;
+    }
   | {
       type: 'permission_request';
+      toolUseId: string;
       toolName: string;
       params: Record<string, unknown>;
       reason?: string;

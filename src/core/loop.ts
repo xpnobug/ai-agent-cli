@@ -32,6 +32,7 @@ export interface AgentLoopOptions {
   tokenTracker?: TokenTracker;
   uiController?: UIController;
   persistSession?: boolean;
+  agentId?: string;
 }
 
 /**

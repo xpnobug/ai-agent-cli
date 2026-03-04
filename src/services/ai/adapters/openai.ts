@@ -395,4 +395,9 @@ export class OpenAIAdapter extends ProtocolAdapter {
       assistantMessage: { role: 'assistant', content, usage, uuid: generateUuid() },
     };
   }
+  async cloneWithModel(model: string): Promise<ProtocolAdapter> {
+    const adapter = new OpenAIAdapter(this.apiKey, model, this.baseUrl);
+    await adapter.initializeClient();
+    return adapter;
+  }
 }

@@ -6,6 +6,7 @@
 import type { Message } from '../core/types.js';
 import type { ContextCompressor } from '../core/contextCompressor.js';
 import type { TokenTracker } from '../utils/tokenTracker.js';
+import type { TaskListItem } from '../services/session/taskList.js';
 
 /**
  * 命令上下文
@@ -27,6 +28,8 @@ export interface SlashCommandContext {
   systemPrompt?: string;
   tokenTracker?: TokenTracker;
   resumeSession?: (identifier?: string) => Promise<string | void>;
+  requestTaskManager?: (tasks: TaskListItem[]) => Promise<{ action: 'output' | 'stop'; taskId: string } | null>;
+  showToolResult?: (toolName: string, input: Record<string, unknown>, result: string, isError: boolean) => void;
 }
 
 /**

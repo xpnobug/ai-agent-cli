@@ -105,11 +105,22 @@ export interface ToolExecutionResult {
   content: ToolResultContent;
   uiContent?: string;
   isError?: boolean;
+  /** 结构化原始输出（用于 ACP rawOutput 等场景） */
+  rawOutput?: Record<string, unknown>;
+  /** 终端输出关联 ID（用于 ACP terminal 展示） */
+  terminalId?: string;
+}
+
+export interface ExecuteToolContext {
+  toolUseId?: string;
+  sessionId?: string;
+  agentId?: string;
 }
 
 export type ExecuteToolFunc = (
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  context?: ExecuteToolContext
 ) => Promise<ToolExecutionResult>;
 
 // LLM 响应
@@ -124,4 +135,4 @@ export interface LLMResponse {
 export type Provider = 'anthropic' | 'openai' | 'gemini';
 
 // 子代理类型
-export type AgentType = 'explore' | 'code' | 'plan' | 'bash' | 'guide' | 'general';
+export type AgentType = string;

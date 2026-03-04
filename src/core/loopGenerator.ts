@@ -39,6 +39,7 @@ export interface AgentLoopGeneratorOptions {
   abortController?: AbortController | HierarchicalAbortController;
   tokenTracker?: TokenTracker;
   persistSession?: boolean;
+  agentId?: string;
 }
 
 /**
@@ -98,6 +99,7 @@ export async function* agentLoopGenerator(
     hookManager,
     abortController,
     tokenTracker,
+    agentId,
   } = options;
 
   let currentHistory = [...history];
@@ -254,7 +256,7 @@ export async function* agentLoopGenerator(
           };
           currentHistory.push(partialMessage);
           if (shouldPersistSession) {
-            appendSessionJsonlFromMessage({ message: partialMessage });
+            appendSessionJsonlFromMessage({ message: partialMessage, agentId });
           }
         }
         break;
@@ -276,7 +278,10 @@ export async function* agentLoopGenerator(
       // 7. 将助手消息添加到历史
       currentHistory.push(streamResult!.assistantMessage);
       if (shouldPersistSession) {
-        appendSessionJsonlFromMessage({ message: streamResult!.assistantMessage });
+        appendSessionJsonlFromMessage({
+          message: streamResult!.assistantMessage,
+          agentId,
+        });
       }
 
       // 8. 没有工具调用则结束
@@ -321,7 +326,7 @@ export async function* agentLoopGenerator(
             const toolResultsMessage = adapter.formatToolResults(toolResults);
             currentHistory.push(toolResultsMessage);
             if (shouldPersistSession) {
-              appendSessionJsonlFromMessage({ message: toolResultsMessage });
+              appendSessionJsonlFromMessage({ message: toolResultsMessage, agentId });
             }
             if (!silent) {
               eventQueue.enqueue({
@@ -330,6 +335,9 @@ export async function* agentLoopGenerator(
                 toolName: toolCall.name,
                 result: toolResultContentToText(toolResults[0]!.content),
                 isError: true,
+                rawOutput: {
+                  content: toolResults[0]!.content,
+                },
               });
               for await (const event of eventQueue.drain()) {
                 yield event;
@@ -375,6 +383,7 @@ export async function* agentLoopGenerator(
             // 2. 入队事件（携带 resolve）
             eventQueue.enqueue({
               type: 'permission_request',
+              toolUseId: toolCall.id,
               toolName: toolCall.name,
               params: toolCall.input,
               reason: checkResult.reason,
@@ -411,7 +420,7 @@ export async function* agentLoopGenerator(
               const toolResultsMessage = adapter.formatToolResults(toolResults);
               currentHistory.push(toolResultsMessage);
               if (shouldPersistSession) {
-                appendSessionJsonlFromMessage({ message: toolResultsMessage });
+              appendSessionJsonlFromMessage({ message: toolResultsMessage, agentId });
               }
               if (!silent) {
                 eventQueue.enqueue({
@@ -420,6 +429,9 @@ export async function* agentLoopGenerator(
                   toolName: toolCall.name,
                   result: TOOL_REJECT_MESSAGE,
                   isError: true,
+                  rawOutput: {
+                    content: TOOL_REJECT_MESSAGE,
+                  },
                 });
                 for await (const event of eventQueue.drain()) {
                   yield event;
@@ -471,7 +483,11 @@ export async function* agentLoopGenerator(
           }
 
           // 执行工具
-          const rawResult = await executeTool(toolCall.name, toolCall.input);
+          const rawResult = await executeTool(toolCall.name, toolCall.input, {
+            toolUseId: toolCall.id,
+            sessionId: getSessionId(),
+            agentId,
+          });
           const result = normalizeToolExecutionResult(rawResult);
 
           // PostToolUse Hook
@@ -492,6 +508,8 @@ export async function* agentLoopGenerator(
               toolName: toolCall.name,
               result: result.uiContent,
               isError: result.isError,
+              rawOutput: result.rawOutput,
+              terminalId: result.terminalId,
             });
           }
 
@@ -521,6 +539,9 @@ export async function* agentLoopGenerator(
               toolName: toolCall.name,
               result: `工具执行失败: ${errorMsg}`,
               isError: true,
+              rawOutput: {
+                error: errorMsg,
+              },
             });
           }
 
@@ -547,7 +568,7 @@ export async function* agentLoopGenerator(
       const toolResultsMessage = adapter.formatToolResults(toolResults);
       currentHistory.push(toolResultsMessage);
       if (shouldPersistSession) {
-        appendSessionJsonlFromMessage({ message: toolResultsMessage });
+        appendSessionJsonlFromMessage({ message: toolResultsMessage, agentId });
       }
     } catch (error: unknown) {
       // 停止思考
@@ -568,7 +589,7 @@ export async function* agentLoopGenerator(
           };
           currentHistory.push(partialMessage);
           if (shouldPersistSession) {
-            appendSessionJsonlFromMessage({ message: partialMessage });
+            appendSessionJsonlFromMessage({ message: partialMessage, agentId });
           }
         }
         break;

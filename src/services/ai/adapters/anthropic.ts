@@ -331,4 +331,9 @@ export class AnthropicAdapter extends ProtocolAdapter {
       throw error;
     }
   }
+  async cloneWithModel(model: string): Promise<ProtocolAdapter> {
+    const adapter = new AnthropicAdapter(this.apiKey, model, this.baseUrl);
+    await adapter.initializeClient();
+    return adapter;
+  }
 }
