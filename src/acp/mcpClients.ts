@@ -19,6 +19,10 @@ export type AcpMcpWrappedClient = {
   resources: MCPResource[];
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function normalizeHeaders(headers: Protocol.HttpHeader[] | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   if (!Array.isArray(headers)) return out;
@@ -36,9 +40,9 @@ export async function connectAcpMcpServers(
 
   for (const server of servers) {
     if (!server || typeof server.name !== 'string') continue;
-    const type = (server as any).type ?? 'stdio';
+    const type: 'stdio' | 'http' | 'sse' = server.type ?? 'stdio';
 
-    let transport: any = null;
+    let transport: StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport | null = null;
     if (type === 'stdio') {
       const command = 'command' in server ? server.command : '';
       const args = 'args' in server && Array.isArray(server.args) ? server.args : [];
@@ -55,9 +59,10 @@ export async function connectAcpMcpServers(
     } else if (type === 'sse') {
       const url = (server as Protocol.McpServerSse).url;
       const headers = normalizeHeaders((server as Protocol.McpServerSse).headers);
+      const eventSourceInit = { headers } as unknown as Record<string, unknown>;
       transport = new SSEClientTransport(new URL(url), {
         // EventSourceInit 的类型未暴露 headers，这里显式透传用于鉴权
-        eventSourceInit: { headers } as any,
+        eventSourceInit,
         requestInit: { headers },
       });
     } else {
@@ -82,27 +87,38 @@ export async function connectAcpMcpServers(
 
     try {
       const toolsResult = await client.listTools();
-      tools = (toolsResult?.tools ?? []).map((tool: any) => ({
-        name: String(tool.name),
-        description: tool.description ? String(tool.description) : '',
-        inputSchema: {
-          type: 'object',
-          properties: (tool.inputSchema?.properties as Record<string, unknown>) ?? {},
-          required: Array.isArray(tool.inputSchema?.required) ? tool.inputSchema.required : [],
-        },
-      }));
+      const rawTools = Array.isArray(toolsResult?.tools) ? toolsResult?.tools : [];
+      tools = rawTools.map((tool) => {
+        const toolRecord: Record<string, unknown> = isRecord(tool) ? tool : {};
+        const inputSchema = isRecord(toolRecord.inputSchema) ? toolRecord.inputSchema : {};
+        const properties = isRecord(inputSchema.properties) ? inputSchema.properties : {};
+        const required = Array.isArray(inputSchema.required) ? inputSchema.required : [];
+        return {
+          name: String(toolRecord.name ?? ''),
+          description: toolRecord.description ? String(toolRecord.description) : '',
+          inputSchema: {
+            type: 'object',
+            properties,
+            required,
+          },
+        };
+      });
     } catch {
       tools = [];
     }
 
     try {
       const resourcesResult = await client.listResources();
-      resources = (resourcesResult?.resources ?? []).map((resource: any) => ({
-        uri: String(resource.uri),
-        name: String(resource.name),
-        description: resource.description ? String(resource.description) : undefined,
-        mimeType: resource.mimeType ? String(resource.mimeType) : undefined,
-      }));
+      const rawResources = Array.isArray(resourcesResult?.resources) ? resourcesResult?.resources : [];
+      resources = rawResources.map((resource) => {
+        const resourceRecord: Record<string, unknown> = isRecord(resource) ? resource : {};
+        return {
+          uri: String(resourceRecord.uri ?? ''),
+          name: String(resourceRecord.name ?? ''),
+          description: resourceRecord.description ? String(resourceRecord.description) : undefined,
+          mimeType: resourceRecord.mimeType ? String(resourceRecord.mimeType) : undefined,
+        };
+      });
     } catch {
       resources = [];
     }

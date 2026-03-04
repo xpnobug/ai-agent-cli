@@ -9,6 +9,24 @@ import type { StreamCallbacks, StreamResult } from './base.js';
 import { toolResultContentToText } from '../../../core/toolResult.js';
 import { generateUuid } from '../../../utils/uuid.js';
 
+type GeminiFunctionCall = {
+  name: string;
+  args?: Record<string, unknown>;
+};
+
+type GeminiResponsePart = {
+  text?: string;
+  functionCall?: GeminiFunctionCall;
+};
+
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: GeminiResponsePart[];
+    };
+  }>;
+};
+
 export class GeminiAdapter extends ProtocolAdapter {
   private client!: GoogleGenerativeAI;
   private generativeModel!: GenerativeModel;
@@ -26,7 +44,7 @@ export class GeminiAdapter extends ProtocolAdapter {
       description: tool.description,
       parameters: {
         type: SchemaType.OBJECT,
-        properties: tool.input_schema.properties as any,
+        properties: tool.input_schema.properties,
         required: tool.input_schema.required,
       },
     }));
@@ -101,7 +119,7 @@ export class GeminiAdapter extends ProtocolAdapter {
     // 调用 API
     const chat = this.generativeModel.startChat({
       history: contents.slice(0, -1),
-      tools: tools as any[],
+      tools: tools as unknown as Array<Record<string, unknown>>,
     });
 
     const lastMessage = contents[contents.length - 1];
@@ -111,7 +129,7 @@ export class GeminiAdapter extends ProtocolAdapter {
   }
 
   extractTextAndToolCalls(response: unknown): LLMResponse {
-    const geminiResponse = response as any;
+    const geminiResponse = response as GeminiResponse;
     const textBlocks: string[] = [];
     const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
 
@@ -143,7 +161,7 @@ export class GeminiAdapter extends ProtocolAdapter {
   }
 
   formatAssistantMessage(response: unknown): Message {
-    const geminiResponse = response as any;
+    const geminiResponse = response as GeminiResponse;
     const content: ContentBlock[] = [];
 
     if (geminiResponse.candidates && geminiResponse.candidates.length > 0) {
@@ -259,7 +277,7 @@ export class GeminiAdapter extends ProtocolAdapter {
 
     const chat = this.generativeModel.startChat({
       history: contents.slice(0, -1),
-      tools: tools as any[],
+      tools: tools as unknown as Array<Record<string, unknown>>,
     });
 
     const lastMessage = contents[contents.length - 1];

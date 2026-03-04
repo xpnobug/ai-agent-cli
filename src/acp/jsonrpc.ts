@@ -129,7 +129,7 @@ export class JsonRpcPeer {
     }
 
     const method = String(payload.method);
-    const params = 'params' in payload ? (payload as any).params : undefined;
+    const params = 'params' in payload ? (payload as { params?: unknown }).params : undefined;
     const id = hasId ? (payload.id as string | number) : null;
 
     const handler = this.handlers.get(method);
@@ -168,15 +168,18 @@ export class JsonRpcPeer {
 
     if (pending.timeoutId) clearTimeout(pending.timeoutId);
 
-    if (msg && typeof msg === 'object' && 'error' in msg && (msg as any).error) {
-      const e = (msg as any).error;
-      const code = typeof e.code === 'number' ? e.code : -32603;
-      const message = typeof e.message === 'string' ? e.message : 'Unknown error';
-      pending.reject(new JsonRpcError(code, message, e.data));
+    const errorValue = msg && typeof msg === 'object' && 'error' in msg
+      ? (msg as { error?: unknown }).error
+      : undefined;
+    if (errorValue) {
+      const errorObj = isObject(errorValue) ? errorValue : {};
+      const code = typeof errorObj.code === 'number' ? errorObj.code : -32603;
+      const message = typeof errorObj.message === 'string' ? errorObj.message : 'Unknown error';
+      pending.reject(new JsonRpcError(code, message, errorObj.data));
       return;
     }
 
-    pending.resolve((msg as any).result);
+    pending.resolve((msg as { result?: unknown }).result);
   }
 
   sendNotification(method: string, params?: unknown): void {

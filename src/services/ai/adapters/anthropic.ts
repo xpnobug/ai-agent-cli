@@ -170,10 +170,11 @@ export class AnthropicAdapter extends ProtocolAdapter {
       applyCacheControlWithLimits(systemBlocks, anthropicMessages);
 
     // 调用 API
+    type AnthropicCreateParams = Parameters<Anthropic['messages']['create']>[0];
     const response = await this.client.messages.create({
       model: this.model,
-      system: processedSystem as any,
-      messages: processedMessages as any,
+      system: processedSystem as unknown as AnthropicCreateParams['system'],
+      messages: processedMessages as unknown as AnthropicCreateParams['messages'],
       tools: tools as Anthropic.Tool[],
       max_tokens: maxTokens,
     });
@@ -252,10 +253,11 @@ export class AnthropicAdapter extends ProtocolAdapter {
     const { systemBlocks: processedSystem, messageParams: processedMessages } =
       applyCacheControlWithLimits(systemBlocks, anthropicMessages);
 
+    type AnthropicCreateParams = Parameters<Anthropic['messages']['create']>[0];
     const stream = this.client.messages.stream({
       model: this.model,
-      system: processedSystem as any,
-      messages: processedMessages as any,
+      system: processedSystem as unknown as AnthropicCreateParams['system'],
+      messages: processedMessages as unknown as AnthropicCreateParams['messages'],
       tools: tools as Anthropic.Tool[],
       max_tokens: maxTokens,
     });

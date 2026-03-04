@@ -4,6 +4,7 @@
  */
 
 import { execa } from 'execa';
+import type { ExecaChildProcess } from 'execa';
 import { validateBashCommand, validateReadOnlyCommand, truncateOutput } from '../services/system/security.js';
 import { appendTaskOutput, readTaskOutput, touchTaskOutputFile } from '../services/session/taskOutputStore.js';
 
@@ -34,8 +35,7 @@ export interface BackgroundTask {
  */
 export class BackgroundTaskManager {
   private tasks = new Map<string, BackgroundTask>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private processes = new Map<string, any>();
+  private processes = new Map<string, ExecaChildProcess<string>>();
   private nextId = 1;
 
   /**

@@ -132,20 +132,23 @@ function safeReadLastPersistedInfo(filePath: string): LastPersistedInfo {
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i]?.trim();
       if (!line) continue;
-      let parsed: any;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(line);
       } catch {
         continue;
       }
       if (!parsed || typeof parsed !== 'object') continue;
+      const record = parsed as Record<string, unknown>;
 
-      if (!lastSlug && typeof parsed.slug === 'string' && parsed.slug.trim()) {
-        lastSlug = parsed.slug.trim();
+      const slugValue = record.slug;
+      if (!lastSlug && typeof slugValue === 'string' && slugValue.trim()) {
+        lastSlug = slugValue.trim();
       }
 
-      if (typeof parsed.uuid === 'string' && parsed.uuid) {
-        return { uuid: parsed.uuid, slug: lastSlug };
+      const uuidValue = record.uuid;
+      if (typeof uuidValue === 'string' && uuidValue) {
+        return { uuid: uuidValue, slug: lastSlug };
       }
     }
 

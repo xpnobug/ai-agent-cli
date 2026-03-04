@@ -2,7 +2,7 @@
  * 子代理任务执行器
  */
 
-import type { AgentType, Message, ToolDefinition, ExecuteToolFunc, ContentBlock, ToolResultBlock, ToolExecutionResult } from '../../core/types.js';
+import type { AgentType, Message, ToolDefinition, ExecuteToolFunc, ContentBlock, ToolResultBlock, ToolExecutionResult, ToolUseBlock } from '../../core/types.js';
 import type { ProtocolAdapter } from '../../services/ai/adapters/base.js';
 import type { HierarchicalAbortController } from '../../core/abort.js';
 import { agentLoop } from '../../core/loop.js';
@@ -13,6 +13,7 @@ import { getAgentByType, getAvailableAgentTypes } from '../../core/agents.js';
 import { generateAgentId } from '../../services/agent/storage.js';
 import { getAgentTranscript, saveAgentTranscript } from '../../services/agent/transcripts.js';
 import { upsertBackgroundAgentTask } from '../../services/session/backgroundAgentTasks.js';
+import type { BackgroundAgentTaskRuntime } from '../../services/session/backgroundAgentTasks.js';
 import { getSessionLogFilePath } from '../../services/session/sessionLog.js';
 import { getSessionId } from '../../services/session/sessionId.js';
 import { existsSync, readFileSync } from 'node:fs';
@@ -42,6 +43,22 @@ function createUserMessage(content: string | ContentBlock[]): Message {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isMessage(value: unknown): value is Message {
+  if (!isRecord(value)) return false;
+  const role = value.role;
+  if (role !== 'user' && role !== 'assistant') return false;
+  const uuid = value.uuid;
+  if (typeof uuid !== 'string' || !uuid) return false;
+  const content = value.content;
+  if (typeof content === 'string') return true;
+  if (!Array.isArray(content)) return false;
+  return true;
+}
+
 function readSessionMessages(sessionId: string): Message[] {
   const filePath = getSessionLogFilePath({ cwd: process.cwd(), sessionId });
   if (!existsSync(filePath)) return [];
@@ -52,16 +69,18 @@ function readSessionMessages(sessionId: string): Message[] {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      let parsed: any;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(trimmed);
       } catch {
         continue;
       }
-      if (!parsed || typeof parsed !== 'object') continue;
-      if (parsed.type !== 'user' && parsed.type !== 'assistant') continue;
-      if (parsed.message && (parsed.message.role === 'user' || parsed.message.role === 'assistant')) {
-        messages.push(parsed.message as Message);
+      if (!isRecord(parsed)) continue;
+      const entryType = parsed.type;
+      if (entryType !== 'user' && entryType !== 'assistant') continue;
+      const messageValue = parsed.message;
+      if (isMessage(messageValue)) {
+        messages.push(messageValue);
       }
     }
     return messages;
@@ -95,14 +114,14 @@ function buildForkContextForAgent(options: {
 
   let toolUseMessageIndex = -1;
   let toolUseMessage: Message | null = null;
-  let taskToolUseBlock: ContentBlock | null = null;
+  let taskToolUseBlock: ToolUseBlock | null = null;
 
   for (let i = 0; i < mainMessages.length; i++) {
     const msg = mainMessages[i];
     if (msg?.role !== 'assistant') continue;
     const blocks = Array.isArray(msg?.content) ? (msg.content as ContentBlock[]) : [];
     const match = blocks.find(
-      b => b && b.type === 'tool_use' && b.id === options.toolUseId,
+      (b): b is ToolUseBlock => Boolean(b && b.type === 'tool_use' && b.id === options.toolUseId),
     );
     if (!match) continue;
     toolUseMessageIndex = i;
@@ -129,7 +148,7 @@ function buildForkContextForAgent(options: {
   const forkContextToolResult: Message = createUserMessage([
     {
       type: 'tool_result',
-      tool_use_id: (taskToolUseBlock as any).id,
+      tool_use_id: taskToolUseBlock.id,
       content: FORK_CONTEXT_TOOL_RESULT_TEXT,
     } as ToolResultBlock,
   ]);
@@ -146,8 +165,9 @@ async function resolveAdapter(
 ): Promise<ProtocolAdapter> {
   const trimmed = typeof model === 'string' ? model.trim() : '';
   if (!trimmed || trimmed === 'inherit' || trimmed === baseAdapter.getModel()) return baseAdapter;
-  if (typeof (baseAdapter as any).cloneWithModel === 'function') {
-    return await (baseAdapter as any).cloneWithModel(trimmed);
+  const cloneable = baseAdapter as { cloneWithModel?: (model: string) => Promise<ProtocolAdapter> | ProtocolAdapter };
+  if (typeof cloneable.cloneWithModel === 'function') {
+    return await cloneable.cloneWithModel(trimmed);
   }
   return baseAdapter;
 }
@@ -255,7 +275,7 @@ export async function runTask(
 
   if (runInBackground) {
     const bgAbortController = new AbortController();
-    const taskRecord: any = {
+    const taskRecord: BackgroundAgentTaskRuntime = {
       type: 'async_agent',
       agentId,
       description,

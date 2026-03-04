@@ -38,6 +38,7 @@ import { runSkill } from '../tools/ai/skill.js';
 import type { Message, ContentBlock } from '../core/types.js';
 import type { SlashCommandContext } from '../commands/registry.js';
 import { generateUuid } from '../utils/uuid.js';
+import type { AskUserQuestionDef } from '../ui/ink/types.js';
 import { appendSessionJsonlFromMessage, appendSessionSummaryRecord } from '../services/session/sessionLog.js';
 import { loadSessionMessages } from '../services/session/sessionLoad.js';
 import { listSessions, resolveResumeSessionIdentifier } from '../services/session/sessionResume.js';
@@ -307,7 +308,7 @@ async function main(): Promise<void> {
         baseUrl: config.baseUrl,
         getProviderDisplayName: () => config.getProviderDisplayName(),
       },
-      userConfig: userConfig as any,
+      userConfig: { ...userConfig },
       input: { getHistory: () => getInputHistory() },
       reminderManager,
       compressor,
@@ -459,7 +460,7 @@ async function main(): Promise<void> {
           ...baseToolConfig,
           abortController: rootAbort,
           askUserQuestion: (questions, initialAnswers) =>
-            inkController.requestQuestion(questions as any, initialAnswers),
+            inkController.requestQuestion(questions as AskUserQuestionDef[], initialAnswers),
         });
 
         const newHistory = await agentLoop(

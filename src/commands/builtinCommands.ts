@@ -23,6 +23,46 @@ import { listTaskItems } from '../services/session/taskList.js';
 import type { TaskListItem } from '../services/session/taskList.js';
 import { runTaskOutput } from '../tools/system/taskOutput.js';
 import { runTaskStop } from '../tools/filesystem/bash.js';
+import type { Message, ToolResultBlock, Provider } from '../core/types.js';
+import type { UserConfig } from '../services/config/configStore.js';
+
+function isUserConfig(value: unknown): value is UserConfig {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.provider === 'string' &&
+    typeof record.apiKey === 'string' &&
+    typeof record.model === 'string'
+  );
+}
+
+function getEffectiveUserConfig(context: { config: { provider: string; model: string; apiKey: string; baseUrl?: string }; userConfig: Record<string, unknown> }): UserConfig {
+  if (isUserConfig(context.userConfig)) return context.userConfig;
+  return {
+    provider: context.config.provider as Provider,
+    apiKey: context.config.apiKey,
+    model: context.config.model,
+    baseUrl: context.config.baseUrl,
+  };
+}
+
+function extractTextFromContent(content: Message['content']): string {
+  if (typeof content === 'string') return content;
+  return content
+    .filter((block): block is { type: 'text'; text: string } =>
+      Boolean(block && block.type === 'text' && typeof block.text === 'string'))
+    .map((block) => block.text)
+    .join('\n');
+}
+
+function findFirstTextBlock(content: Message['content']): string | null {
+  if (typeof content === 'string') return content;
+  const block = content.find(
+    (item): item is { type: 'text'; text: string } =>
+      Boolean(item && item.type === 'text' && typeof item.text === 'string')
+  );
+  return block ? block.text : null;
+}
 
 /**
  * /help 命令
@@ -58,7 +98,8 @@ export const configCommand: SlashCommand = {
   name: 'config',
   description: '查看当前配置',
   async execute(_args, context) {
-    return '\n当前配置:\n' + getConfigSummary(context.userConfig as any) + '\n';
+    const userConfig = getEffectiveUserConfig(context);
+    return '\n当前配置:\n' + getConfigSummary(userConfig) + '\n';
   },
 };
 
@@ -124,18 +165,18 @@ export const compactCommand: SlashCommand = {
 
     try {
       const result = await context.compressor.compact(
-        context.history as any[],
+        context.history,
         context.systemPrompt
       );
 
       // 替换历史
       context.history.splice(0, context.history.length);
-      for (const msg of result.newHistory as any[]) {
+      for (const msg of result.newHistory) {
         context.history.push(msg);
       }
 
       if (result.summary) {
-        const leaf = [...result.newHistory].reverse().find((msg: any) => msg.role === 'assistant')?.uuid;
+        const leaf = [...result.newHistory].reverse().find((msg) => msg.role === 'assistant')?.uuid;
         if (leaf) {
           appendSessionSummaryRecord({ summary: result.summary, leafUuid: leaf });
         }
@@ -162,15 +203,16 @@ export const costCommand: SlashCommand = {
     }
 
     // 回退到估算
-    const currentTokens = countTokensFromUsage(context.history as any[]);
+    const currentTokens = countTokensFromUsage(context.history);
+    const userConfig = isUserConfig(context.userConfig) ? context.userConfig : null;
     const maxTokens = getModelContextLength(
-      context.userConfig.provider as string || context.config.provider,
-      context.userConfig.model as string || context.config.model
+      userConfig?.provider || context.config.provider,
+      userConfig?.model || context.config.model
     );
 
     const percentage = getTokenPercentage(currentTokens, maxTokens);
     const modelDisplay = getModelDisplayName(
-      context.userConfig.model as string || context.config.model
+      userConfig?.model || context.config.model
     );
 
     const lines = [
@@ -265,10 +307,7 @@ export const copyCommand: SlashCommand = {
         if (typeof msg.content === 'string') {
           text = msg.content;
         } else if (Array.isArray(msg.content)) {
-          text = msg.content
-            .filter((b: any) => b.type === 'text')
-            .map((b: any) => b.text)
-            .join('\n');
+          text = extractTextFromContent(msg.content);
         }
 
         if (!text) continue;
@@ -315,10 +354,7 @@ export const exportCommand: SlashCommand = {
         if (typeof msg.content === 'string') {
           text = msg.content;
         } else if (Array.isArray(msg.content)) {
-          text = (msg.content as any[])
-            .filter((b: any) => b.type === 'text')
-            .map((b: any) => b.text)
-            .join('\n');
+          text = extractTextFromContent(msg.content);
         }
         content += `[${role}]\n${text}\n\n`;
       }
@@ -331,10 +367,7 @@ export const exportCommand: SlashCommand = {
         if (typeof msg.content === 'string') {
           text = msg.content;
         } else if (Array.isArray(msg.content)) {
-          text = (msg.content as any[])
-            .filter((b: any) => b.type === 'text')
-            .map((b: any) => b.text)
-            .join('\n');
+          text = extractTextFromContent(msg.content);
         }
         content += `### ${role}\n\n${text}\n\n---\n\n`;
       }
@@ -381,10 +414,11 @@ export const contextCommand: SlashCommand = {
   name: 'context',
   description: '上下文使用可视化',
   async execute(_args, context) {
-    const currentTokens = countTokensFromUsage(context.history as any[]);
+    const currentTokens = countTokensFromUsage(context.history);
+    const userConfig = isUserConfig(context.userConfig) ? context.userConfig : null;
     const maxTokens = getModelContextLength(
-      context.userConfig.provider as string || context.config.provider,
-      context.userConfig.model as string || context.config.model
+      userConfig?.provider || context.config.provider,
+      userConfig?.model || context.config.model
     );
 
     const percentage = getTokenPercentage(currentTokens, maxTokens);
@@ -405,11 +439,11 @@ export const contextCommand: SlashCommand = {
       if (typeof msg.content === 'string') {
         msgTokens = Math.ceil(msg.content.length / 4);
       } else if (Array.isArray(msg.content)) {
-        for (const block of msg.content as any[]) {
+        for (const block of msg.content) {
           if (block.type === 'text') {
             msgTokens += Math.ceil(block.text.length / 4);
           } else if (block.type === 'tool_result') {
-            const text = toolResultContentToText(block.content);
+            const text = toolResultContentToText((block as ToolResultBlock).content);
             msgTokens += Math.ceil(text.length / 4);
           }
         }
@@ -496,8 +530,8 @@ export const debugCommand: SlashCommand = {
         if (typeof msg.content === 'string') {
           preview = msg.content.slice(0, 50);
         } else if (Array.isArray(msg.content)) {
-          const textBlock = (msg.content as any[]).find((b: any) => b.type === 'text');
-          preview = textBlock ? textBlock.text.slice(0, 50) : '[工具调用/结果]';
+          const textBlock = findFirstTextBlock(msg.content);
+          preview = textBlock ? textBlock.slice(0, 50) : '[工具调用/结果]';
         }
         lines.push(`  ${role} ${preview}${preview.length >= 50 ? '...' : ''}`);
       }

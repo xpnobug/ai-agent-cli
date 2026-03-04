@@ -151,13 +151,19 @@ export function useTextInput({
     ['d', () => cursor.deleteWordAfter()],
   ]);
 
+  function getKeyFlag(key: Key, prop: string): boolean {
+    const record = key as Record<string, unknown>;
+    const value = record[prop];
+    return typeof value === 'boolean' ? value : false;
+  }
+
   function handleEnter(key: Key) {
     if (!multiline) {
       onSubmit?.(originalValue);
       return;
     }
 
-    if (key.meta || ('option' in key && (key as any).option)) {
+    if (key.meta || getKeyFlag(key, 'option')) {
       return cursor.insert('\n');
     }
     onSubmit?.(originalValue);
@@ -241,15 +247,15 @@ export function useTextInput({
     switch (true) {
       case key.escape:
         return handleEscape;
-      case key.leftArrow && (key.ctrl || key.meta || ('fn' in key && (key as any).fn)):
+      case key.leftArrow && (key.ctrl || key.meta || getKeyFlag(key, 'fn')):
         return () => cursor.prevWord();
-      case key.rightArrow && (key.ctrl || key.meta || ('fn' in key && (key as any).fn)):
+      case key.rightArrow && (key.ctrl || key.meta || getKeyFlag(key, 'fn')):
         return () => cursor.nextWord();
       case key.ctrl:
         return handleCtrl;
-      case 'home' in key && (key as any).home:
+      case getKeyFlag(key, 'home'):
         return () => cursor.startOfLine();
-      case 'end' in key && (key as any).end:
+      case getKeyFlag(key, 'end'):
         return () => cursor.endOfLine();
       case key.pageDown:
         return () => cursor.endOfLine();

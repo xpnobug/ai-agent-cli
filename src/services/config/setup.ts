@@ -9,7 +9,14 @@ import { PRODUCT_NAME } from '../../core/constants.js';
 import { DEFAULT_ENDPOINTS } from './types.js';
 import { saveUserConfig, getConfigPath, type UserConfig } from './configStore.js';
 
-const { Select, Password, Input, Confirm } = enquirer as any;
+type EnquirerPrompt<T> = { run(): Promise<T> };
+type EnquirerClass<T> = new (options: Record<string, unknown>) => EnquirerPrompt<T>;
+const { Select, Password, Input, Confirm } = enquirer as unknown as {
+  Select: EnquirerClass<string>;
+  Password: EnquirerClass<string>;
+  Input: EnquirerClass<string>;
+  Confirm: EnquirerClass<boolean>;
+};
 
 /**
  * 提供商选项
@@ -19,6 +26,10 @@ const PROVIDER_CHOICES = [
     { name: 'openai', message: 'OpenAI GPT' },
     { name: 'gemini', message: 'Google Gemini' },
 ];
+
+function isProvider(value: string): value is Provider {
+  return value === 'anthropic' || value === 'openai' || value === 'gemini';
+}
 
 /**
  * 模型选项
@@ -78,7 +89,11 @@ export async function runSetupWizard(): Promise<UserConfig | null> {
             message: '选择 AI 提供商',
             choices: PROVIDER_CHOICES,
         });
-        const provider: Provider = await providerPrompt.run();
+        const providerRaw = await providerPrompt.run();
+        if (!isProvider(providerRaw)) {
+            throw new Error(`未知的提供商: ${providerRaw}`);
+        }
+        const provider: Provider = providerRaw;
 
         // 2. 输入 API Key
         const apiKeyPrompt = new Password({
@@ -155,7 +170,10 @@ export async function runSetupWizard(): Promise<UserConfig | null> {
         return config;
     } catch (error) {
         // 用户取消（Ctrl+C）
-        if ((error as any).message?.includes('cancelled') || (error as any).code === 'ERR_USE_AFTER_CLOSE') {
+        const err = error as { message?: unknown; code?: unknown };
+        const message = typeof err.message === 'string' ? err.message : '';
+        const code = typeof err.code === 'string' ? err.code : '';
+        if (message.includes('cancelled') || code === 'ERR_USE_AFTER_CLOSE') {
             console.log(chalk.yellow('\n配置已取消。'));
             return null;
         }

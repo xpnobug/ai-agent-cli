@@ -10,6 +10,7 @@ import type { BashOptions } from './filesystem/bash.js';
 import { runRead, runWrite, runEdit } from './filesystem/fileOps.js';
 import { runGlob } from './search/glob.js';
 import { runGrep } from './search/grep.js';
+import type { GrepOutputMode } from './search/grep.js';
 import { runAskUserQuestion } from './interaction/askQuestion.js';
 import type { Question } from './interaction/askQuestion.js';
 import { runTodoWrite } from './interaction/todo.js';
@@ -27,6 +28,7 @@ import type { MCPRegistry } from '../services/mcp/registry.js';
 import { runListMcpResources, runReadMcpResource } from './mcp/mcpTools.js';
 import type { HierarchicalAbortController } from '../core/abort.js';
 import { loadPromptWithVars } from '../services/promptLoader.js';
+import type { TodoItem } from './types.js';
 
 /**
  * 工具执行器配置
@@ -102,13 +104,18 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
           );
           break;
 
-        case 'Grep':
+        case 'Grep': {
+          const outputMode =
+            typeof input.outputMode === 'string' &&
+            (['content', 'files_with_matches', 'count'] as const).includes(input.outputMode as GrepOutputMode)
+              ? (input.outputMode as GrepOutputMode)
+              : undefined;
           result = await runGrep(
             workdir,
             input.pattern as string,
             input.path as string | undefined,
             input.glob as string | undefined,
-            input.outputMode as any,
+            outputMode,
             input.caseInsensitive as boolean | undefined,
             input.contextBefore as number | undefined,
             input.contextAfter as number | undefined,
@@ -119,6 +126,7 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
             input.offset as number | undefined
           );
           break;
+        }
 
         case 'AskUserQuestion': {
           if (askUserQuestion) {
@@ -154,12 +162,12 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
             };
             break;
           }
-          result = await runAskUserQuestion(input.questions as any[]);
+          result = await runAskUserQuestion(Array.isArray(input.questions) ? (input.questions as Question[]) : []);
           break;
         }
 
         case 'TodoWrite':
-          result = await runTodoWrite(input.todos as any[]);
+          result = await runTodoWrite(Array.isArray(input.todos) ? (input.todos as TodoItem[]) : []);
           break;
 
         case 'TaskCreate':

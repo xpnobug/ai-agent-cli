@@ -17,6 +17,7 @@ import { loadUserConfig } from '../services/config/configStore.js';
 import { Config } from '../services/config/Config.js';
 import { loadPermissionsConfig } from '../services/config/permissions.js';
 import { getPermissionManager } from '../core/permissions.js';
+import type { PermissionMode } from '../core/permissions.js';
 import { getBuiltinCommands } from '../commands/builtinCommands.js';
 import { setSessionId } from '../services/session/sessionId.js';
 import { MCPRegistry } from '../services/mcp/registry.js';
@@ -74,6 +75,23 @@ function asJsonObject(value: unknown): Protocol.JsonObject | undefined {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+const PERMISSION_MODES: PermissionMode[] = [
+  'ask',
+  'acceptEdits',
+  'bypassPermissions',
+  'plan',
+  'dontAsk',
+  'default',
+];
+
+function isPermissionMode(value: string): value is PermissionMode {
+  return PERMISSION_MODES.includes(value as PermissionMode);
+}
+
 function toolKindForName(toolName: string): Protocol.ToolKind {
   switch (toolName) {
     case 'read_file':
@@ -129,14 +147,14 @@ function blocksToText(blocks: Protocol.ContentBlock[]): string {
   for (const block of blocks) {
     if (!block || typeof block !== 'object') continue;
 
-    switch ((block as any).type) {
+    switch (block.type) {
       case 'text': {
-        const text = typeof (block as any).text === 'string' ? (block as any).text : '';
+        const text = block.text;
         if (text) parts.push(text);
         break;
       }
       case 'resource': {
-        const resource = (block as any).resource || {};
+        const resource = block.resource || {};
         const uri = typeof resource.uri === 'string' ? resource.uri : '';
         const mimeType =
           typeof resource.mimeType === 'string' && resource.mimeType ? resource.mimeType : 'text/plain';
@@ -160,10 +178,10 @@ function blocksToText(blocks: Protocol.ContentBlock[]): string {
         break;
       }
       case 'resource_link': {
-        const uri = typeof (block as any).uri === 'string' ? (block as any).uri : '';
-        const name = typeof (block as any).name === 'string' ? (block as any).name : '';
-        const title = typeof (block as any).title === 'string' ? (block as any).title : '';
-        const description = typeof (block as any).description === 'string' ? (block as any).description : '';
+        const uri = typeof block.uri === 'string' ? block.uri : '';
+        const name = typeof block.name === 'string' ? block.name : '';
+        const title = typeof block.title === 'string' ? block.title : '';
+        const description = typeof block.description === 'string' ? block.description : '';
 
         parts.push([
           '',
@@ -252,8 +270,8 @@ function toMcpServerConfig(
   server: Protocol.McpServer,
   cwd: string,
 ): MCPServerConfig | null {
-  const type = (server as any).type;
-  if (type && type !== 'stdio') {
+  const type = server.type ?? 'stdio';
+  if (type !== 'stdio') {
     return null;
   }
   if (!server.name || !('command' in server)) return null;
@@ -292,9 +310,10 @@ function readFileSafe(filePath: string): string {
 
 function extractMessageText(message: Message): string {
   if (typeof message.content === 'string') return message.content;
-  const blocks = message.content as any[];
+  const blocks = Array.isArray(message.content) ? message.content : [];
   return blocks
-    .filter(block => block && block.type === 'text' && typeof block.text === 'string')
+    .filter((block): block is { type: 'text'; text: string } =>
+      Boolean(block && block.type === 'text' && typeof block.text === 'string'))
     .map(block => block.text)
     .join('');
 }
@@ -312,21 +331,24 @@ function parseMcpToolName(toolName: string): { serverName: string; toolName: str
   };
 }
 
-function mcpContentToText(content: any[]): string {
+function mcpContentToText(content: unknown[]): string {
   const parts: string[] = [];
   for (const block of content || []) {
-    if (!block || typeof block !== 'object') continue;
-    if (block.type === 'text' && typeof block.text === 'string') {
+    if (!isRecord(block)) continue;
+    const type = typeof block.type === 'string' ? block.type : '';
+    if (type === 'text' && typeof block.text === 'string') {
       parts.push(block.text);
       continue;
     }
-    if (block.type === 'resource' && block.resource?.text) {
+    if (type === 'resource' && isRecord(block.resource) && typeof block.resource.text === 'string') {
       parts.push(block.resource.text);
       continue;
     }
-    if (block.type === 'resource_link') {
-      const name = block.name || block.uri || '';
-      const title = block.title ? ` ${block.title}` : '';
+    if (type === 'resource_link') {
+      const name = typeof block.name === 'string'
+        ? block.name
+        : (typeof block.uri === 'string' ? block.uri : '');
+      const title = typeof block.title === 'string' && block.title ? ` ${block.title}` : '';
       parts.push(`${name}${title}`.trim());
       continue;
     }
@@ -425,7 +447,7 @@ export class KodeAcpAgent {
 
     // ACP 额外支持 http/sse MCP servers（SDK 客户端）
     const acpClients = await connectAcpMcpServers(
-      mcpServers.filter(s => (s as any).type && (s as any).type !== 'stdio'),
+      mcpServers.filter(s => Boolean(s.type && s.type !== 'stdio')),
     );
 
     const tools = getAllTools([
@@ -496,7 +518,10 @@ export class KodeAcpAgent {
     const session = await this.createSession(cwd, sessionId, mcpServers);
     session.messages = Array.isArray(persisted.messages) ? persisted.messages : [];
     session.currentModeId = persisted.currentModeId || session.permissionManager.getMode();
-    session.permissionManager.setMode(session.currentModeId as any);
+    const persistedMode = session.currentModeId;
+    if (isPermissionMode(persistedMode)) {
+      session.permissionManager.setMode(persistedMode);
+    }
 
     this.sessions.set(sessionId, session);
     this.sendAvailableCommands(session);
@@ -520,7 +545,9 @@ export class KodeAcpAgent {
     }
 
     session.currentModeId = modeId;
-    session.permissionManager.setMode(modeId as any);
+    if (isPermissionMode(modeId)) {
+      session.permissionManager.setMode(modeId);
+    }
     this.sendCurrentMode(session);
     persistAcpSessionToDisk(session);
 
@@ -536,7 +563,9 @@ export class KodeAcpAgent {
   }
 
   private async handleSessionPrompt(params: unknown): Promise<Protocol.PromptResponse> {
-    const p = (params ?? {}) as any;
+    const p = (params ?? {}) as Partial<Protocol.PromptParams> & {
+      content?: Protocol.ContentBlock[];
+    };
     const sessionId = typeof p.sessionId === 'string' ? p.sessionId : '';
     const blocks: Protocol.ContentBlock[] = Array.isArray(p.prompt)
       ? (p.prompt as Protocol.ContentBlock[])
@@ -559,7 +588,7 @@ export class KodeAcpAgent {
       role: 'user',
       content: promptText,
       uuid: randomUUID(),
-    } as any;
+    };
 
     this.sendUserMessage(session.sessionId, promptText);
 
@@ -876,21 +905,23 @@ export class KodeAcpAgent {
             const rawResult = await wrapper.client.callTool({
               name: parsed.toolName,
               arguments: input,
-            } as any);
+            });
 
-            const contentBlocks = Array.isArray((rawResult as any)?.content)
-              ? (rawResult as any).content
+            const rawRecord: Record<string, unknown> = isRecord(rawResult) ? rawResult : {};
+            const contentBlocks = Array.isArray(rawRecord.content)
+              ? (rawRecord.content as unknown[])
               : [];
+            const toolResultValue = rawRecord.toolResult;
             const text = contentBlocks.length > 0
               ? mcpContentToText(contentBlocks)
-              : typeof (rawResult as any)?.toolResult === 'string'
-                ? (rawResult as any).toolResult
-                : JSON.stringify((rawResult as any)?.toolResult ?? rawResult, null, 2);
+              : typeof toolResultValue === 'string'
+                ? toolResultValue
+                : JSON.stringify(toolResultValue ?? rawResult, null, 2);
 
             return {
               content: text,
               uiContent: text,
-              isError: Boolean((rawResult as any)?.isError),
+              isError: Boolean(rawRecord.isError),
               rawOutput: asJsonObject(rawResult) ?? { result: rawResult },
             };
           } catch (error: unknown) {
@@ -951,10 +982,14 @@ export class KodeAcpAgent {
         const wrapper = acpClientMap.get(server);
         if (wrapper && uri) {
           try {
-            const raw = await wrapper.client.readResource({ uri } as any);
+            const raw = await wrapper.client.readResource({ uri });
             const textParts: string[] = [];
-            for (const content of (raw as any).contents ?? []) {
-              if (content?.text) textParts.push(String(content.text));
+            const rawRecord: Record<string, unknown> = isRecord(raw) ? raw : {};
+            const contents = Array.isArray(rawRecord.contents) ? (rawRecord.contents as unknown[]) : [];
+            for (const content of contents) {
+              if (isRecord(content) && typeof content.text === 'string') {
+                textParts.push(content.text);
+              }
             }
             const text = textParts.join('\n') || '(无内容)';
             return {

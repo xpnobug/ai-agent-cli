@@ -68,28 +68,34 @@ function safeParseJson(line: string): unknown | null {
   }
 }
 
+function getEntryType(entry: JsonlEntry): string | null {
+  if (!entry || typeof entry !== 'object') return null;
+  const typeValue = (entry as { type?: unknown }).type;
+  return typeof typeValue === 'string' ? typeValue : null;
+}
+
 function isUserEntry(entry: JsonlEntry): entry is JsonlUserEntry {
-  return typeof (entry as any)?.type === 'string' && (entry as any).type === 'user';
+  return getEntryType(entry) === 'user';
 }
 
 function isAssistantEntry(entry: JsonlEntry): entry is JsonlAssistantEntry {
-  return typeof (entry as any)?.type === 'string' && (entry as any).type === 'assistant';
+  return getEntryType(entry) === 'assistant';
 }
 
 function isSummaryEntry(entry: JsonlEntry): entry is JsonlSummaryEntry {
-  return typeof (entry as any)?.type === 'string' && (entry as any).type === 'summary';
+  return getEntryType(entry) === 'summary';
 }
 
 function isCustomTitleEntry(entry: JsonlEntry): entry is JsonlCustomTitleEntry {
-  return typeof (entry as any)?.type === 'string' && (entry as any).type === 'custom-title';
+  return getEntryType(entry) === 'custom-title';
 }
 
 function isTagEntry(entry: JsonlEntry): entry is JsonlTagEntry {
-  return typeof (entry as any)?.type === 'string' && (entry as any).type === 'tag';
+  return getEntryType(entry) === 'tag';
 }
 
 function isFileHistorySnapshotEntry(entry: JsonlEntry): entry is JsonlFileHistorySnapshotEntry {
-  return typeof (entry as any)?.type === 'string' && (entry as any).type === 'file-history-snapshot';
+  return getEntryType(entry) === 'file-history-snapshot';
 }
 
 function normalizeLoadedMessage(entry: JsonlUserEntry | JsonlAssistantEntry, role: 'user' | 'assistant'): Message | null {

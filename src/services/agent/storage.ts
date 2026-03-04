@@ -27,7 +27,7 @@ export function getAgentFilePath(agentId: string): string {
   return join(configDir, filename);
 }
 
-export function readAgentData<T = any>(agentId: string): T | null {
+export function readAgentData<T = unknown>(agentId: string): T | null {
   const filePath = getAgentFilePath(agentId);
   if (!existsSync(filePath)) return null;
 
@@ -39,7 +39,7 @@ export function readAgentData<T = any>(agentId: string): T | null {
   }
 }
 
-export function writeAgentData<T = any>(agentId: string, data: T): void {
+export function writeAgentData<T = unknown>(agentId: string, data: T): void {
   const filePath = getAgentFilePath(agentId);
   writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }

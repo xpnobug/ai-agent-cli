@@ -171,12 +171,12 @@ function normalizeStringArray(value: unknown): string[] {
   return normalized;
 }
 
-function readMarkdownFile(filePath: string): { frontmatter: any; content: string } | null {
+function readMarkdownFile(filePath: string): { frontmatter: Record<string, unknown>; content: string } | null {
   try {
     const raw = readFileSync(filePath, 'utf8');
     const parsed = matter(raw);
     return {
-      frontmatter: (parsed.data as any) ?? {},
+      frontmatter: (parsed.data as Record<string, unknown>) ?? {},
       content: String(parsed.content ?? ''),
     };
   } catch {
@@ -208,7 +208,7 @@ function listMarkdownFilesRecursively(rootDir: string): string[] {
       isSymbolicLink(): boolean;
     }> = [];
     try {
-      entries = readdirSync(dirPath, { withFileTypes: true, encoding: 'utf8' }) as any;
+      entries = readdirSync(dirPath, { withFileTypes: true, encoding: 'utf8' });
     } catch {
       return;
     }

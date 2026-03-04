@@ -82,7 +82,7 @@ function readSessionListItemBestEffort(args: {
     const parsed = safeParseJson(line);
     if (!parsed || typeof parsed !== 'object') continue;
 
-    const entry: any = parsed;
+    const entry = parsed as Record<string, unknown>;
 
     if (!slug && typeof entry.slug === 'string' && entry.slug.trim()) {
       slug = entry.slug.trim();
@@ -201,7 +201,7 @@ function readSessionCwdBestEffort(filePath: string): string | null {
       if (!line) continue;
       const parsed = safeParseJson(line);
       if (!parsed || typeof parsed !== 'object') continue;
-      const cwd = (parsed as any).cwd;
+      const cwd = (parsed as { cwd?: unknown }).cwd;
       if (typeof cwd === 'string' && cwd.trim()) return cwd.trim();
     }
   } catch {

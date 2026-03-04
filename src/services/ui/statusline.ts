@@ -2,12 +2,7 @@
  * statusline 配置
  */
 
-import { loadUserConfig, saveUserConfig } from '../config/configStore.js';
-
-type UserSettings = {
-  statusLine?: unknown;
-  [key: string]: unknown;
-};
+import { loadUserConfig, saveUserConfig, type UserConfig } from '../config/configStore.js';
 
 function normalizeString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -16,7 +11,7 @@ function normalizeString(value: unknown): string | null {
 }
 
 export function getStatusLineCommand(): string | null {
-  const config = loadUserConfig() as UserSettings | null;
+  const config = loadUserConfig();
   if (!config) return null;
 
   const raw = config.statusLine;
@@ -29,16 +24,16 @@ export function getStatusLineCommand(): string | null {
 }
 
 export function setStatusLineCommand(command: string | null): boolean {
-  const config = loadUserConfig() as UserSettings | null;
+  const config = loadUserConfig();
   if (!config) return false;
 
-  const next: UserSettings = { ...config };
+  const next: UserConfig = { ...config };
   if (command === null) {
     delete next.statusLine;
   } else {
     next.statusLine = command;
   }
 
-  saveUserConfig(next as any);
+  saveUserConfig(next);
   return true;
 }

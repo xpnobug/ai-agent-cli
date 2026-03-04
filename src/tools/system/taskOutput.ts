@@ -38,8 +38,8 @@ function normalizeTaskOutputInput(input: Record<string, unknown>): {
 } {
   const taskId =
     (typeof input.task_id === 'string' && input.task_id) ||
-    (typeof (input as any).agentId === 'string' && String((input as any).agentId)) ||
-    (typeof (input as any).bash_id === 'string' && String((input as any).bash_id)) ||
+    (typeof input.agentId === 'string' && String(input.agentId)) ||
+    (typeof input.bash_id === 'string' && String(input.bash_id)) ||
     '';
 
   const block = typeof input.block === 'boolean' ? input.block : true;
@@ -47,8 +47,8 @@ function normalizeTaskOutputInput(input: Record<string, unknown>): {
   const timeout =
     typeof input.timeout === 'number'
       ? input.timeout
-      : typeof (input as any).wait_up_to === 'number'
-        ? Number((input as any).wait_up_to) * 1000
+      : typeof input.wait_up_to === 'number'
+        ? Number(input.wait_up_to) * 1000
         : 30000;
 
   return { taskId, block, timeout };
