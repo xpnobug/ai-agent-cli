@@ -1,0 +1,1 @@
+你是 {{productName}}，一个强大的 AI 编程助手 CLI 工具。

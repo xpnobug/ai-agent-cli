@@ -7,6 +7,7 @@ import TurndownService from 'turndown';
 import { getFetchCache } from './fetchCache.js';
 import type { ProtocolAdapter } from '../../services/ai/adapters/base.js';
 import { generateUuid } from '../../utils/uuid.js';
+import { loadPromptWithVars } from '../../services/promptLoader.js';
 
 /**
  * 获取网页内容并转换为 Markdown
@@ -153,16 +154,13 @@ async function extractWithLLM(
   adapter: ProtocolAdapter
 ): Promise<string> {
   try {
-    const extractionPrompt = `以下是从 ${url} 获取的网页内容。请根据用户的要求提取信息。
+    const extractionPrompt = loadPromptWithVars('tools/webfetch-extract-user.md', {
+      url,
+      prompt,
+      content,
+    });
 
-用户要求: ${prompt}
-
-网页内容:
-${content}
-
-请直接回答用户的问题，不要重复网页内容。`;
-
-    const systemPrompt = '你是一个信息提取助手。从提供的网页内容中准确提取用户请求的信息。';
+    const systemPrompt = loadPromptWithVars('tools/webfetch-extract-system.md', {});
     const messages = [{ role: 'user' as const, content: extractionPrompt, uuid: generateUuid() }];
     const rawResponse = await adapter.createMessage(
       systemPrompt,

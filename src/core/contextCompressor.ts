@@ -7,6 +7,7 @@ import type { Message } from './types.js';
 import type { ProtocolAdapter } from '../services/ai/adapters/base.js';
 import { toolResultContentToText } from './toolResult.js';
 import { generateUuid } from '../utils/uuid.js';
+import { loadPromptWithVars } from '../services/promptLoader.js';
 
 /**
  * 压缩配置
@@ -40,21 +41,10 @@ const DEFAULT_CONFIG: CompactionConfig = {
 };
 
 /**
- * 摘要生成模板
+ * 摘要生成模板（文件化）
  */
-const SUMMARY_PROMPT = `请将以下对话历史压缩为一个结构化的摘要。摘要应包含以下几个部分：
-
-1. **请求意图**: 用户最初的请求和目标
-2. **技术概念**: 讨论中涉及的关键技术概念和术语
-3. **文件和代码**: 涉及的文件路径、函数名、类名等关键代码引用
-4. **错误与修复**: 遇到的错误及其解决方案
-5. **已实施的方案**: 已经完成的更改和实现
-6. **用户偏好**: 用户表达的偏好和决定
-7. **任务进度**: 整体任务的完成状态
-8. **当前工作**: 最近正在进行的工作
-9. **下一步**: 接下来需要完成的工作
-
-请以简洁、信息密集的方式撰写，确保不丢失关键上下文。`;
+const SUMMARY_PROMPT = loadPromptWithVars('compression/summary-user.md', {});
+const SUMMARY_SYSTEM_PROMPT = loadPromptWithVars('compression/summary-system.md', {});
 
 /**
  * 上下文压缩器
@@ -159,7 +149,7 @@ export class ContextCompressor {
       ];
 
       const rawResponse = await this.adapter.createMessage(
-        '你是一个对话摘要助手。你的任务是准确、简洁地总结对话内容，保留所有关键技术细节。',
+        SUMMARY_SYSTEM_PROMPT,
         summaryMessages,
         this.adapter.convertTools([]),
         this.config.summaryMaxTokens
