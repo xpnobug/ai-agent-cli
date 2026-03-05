@@ -261,7 +261,9 @@ export async function runTask(
     ...transcriptMessages,
   ];
 
-  const systemPrompt = createSubagentSystemPrompt(workdir, agentType);
+  const systemPrompt = createSubagentSystemPrompt(workdir, agentType, {
+    taskDescription: description,
+  });
   const subagentTools = getToolsForAgentType(agentType);
   const envSubagentModel =
     process.env.AI_AGENT_SUBAGENT_MODEL ??

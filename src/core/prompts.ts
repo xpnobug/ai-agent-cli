@@ -109,24 +109,30 @@ export function createSystemPrompt(
 /**
  * 创建子代理的系统提示词
  */
-export function getAgentBasePrompt(workdir: string): string {
+export function getAgentBasePrompt(_workdir: string): string {
   return [
     loadPromptWithVars('system/identity-subagent.md', { productName: PRODUCT_NAME }),
     loadPromptWithVars('system/subagent-response.md', {}),
-    getEnvInfo(workdir),
   ].join('\n\n');
 }
 
 export function createSubagentSystemPrompt(
   workdir: string,
-  agentType: AgentType
+  agentType: AgentType,
+  options?: { taskDescription?: string }
 ): string {
   const basePrompt = getAgentBasePrompt(workdir);
   const config = getAgentByType(agentType);
-  if (!config || !config.systemPrompt) {
-    return basePrompt;
-  }
-  return [basePrompt, config.systemPrompt].join('\n\n');
+  const agentSystemPrompt = [
+    basePrompt,
+    config?.systemPrompt ?? '',
+  ].filter(Boolean).join('\n\n');
+
+  return loadPromptWithVars('system/subagent-wrapper.md', {
+    agentSystemPrompt,
+    taskDescription: options?.taskDescription ?? '',
+    envInfo: getEnvInfo(workdir),
+  });
 }
 
 /**
