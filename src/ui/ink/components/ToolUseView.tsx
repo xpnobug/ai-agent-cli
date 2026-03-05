@@ -37,22 +37,17 @@ export function ToolUseView({ name, detail, status, animate }: ToolUseViewProps)
   const showDetail = detail && detail.trim().length > 0;
 
   return (
-    <Box flexDirection="column">
-      <Box flexDirection="row" flexWrap="nowrap">
-        <Box minWidth={2}>
-          <Text color={color}>{showDot ? UI_SYMBOLS.aiPrefix : '  '}</Text>
-        </Box>
-        <Text color={color} dimColor={status === 'queued'} bold={status !== 'queued'}>
-          {name}
-        </Text>
+    <Box flexDirection="row" flexWrap="wrap">
+      <Box minWidth={2}>
+        <Text color={color}>{showDot ? UI_SYMBOLS.aiPrefix : '  '}</Text>
       </Box>
-      <Box flexDirection="row" flexWrap="nowrap">
-        <Text color={color} dimColor={status === 'queued'}>  </Text>
-        <Text color={color} dimColor={status === 'queued'}>
-          {showDetail ? `(${detail})` : ''}
-        </Text>
-        <Text color={color} dimColor={status === 'queued'}>…</Text>
-      </Box>
+      <Text color={color} dimColor={status === 'queued'} bold={status !== 'queued'}>
+        {name}
+      </Text>
+      <Text color={color} dimColor={status === 'queued'}>
+        {showDetail ? ` (${detail})` : ''}
+      </Text>
+      <Text color={color} dimColor={status === 'queued'}>…</Text>
     </Box>
   );
 }
