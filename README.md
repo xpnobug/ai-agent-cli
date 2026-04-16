@@ -4,6 +4,14 @@
 
 ## 核心特性
 
+### 首次运行引导
+
+基于 Ink 的交互式引导流程，6 步完成初始配置：
+
+```
+选择 AI 提供商 → 输入 API Key → 选择模型 → 选择主题 → 选择吉祥物 → 安全说明
+```
+
 ### 多提供商支持
 
 通过统一的适配器接口无缝切换 LLM 提供商：
@@ -13,7 +21,7 @@
 | **Anthropic Claude** | Claude Sonnet 4、Claude Opus 4、Claude 3.5 Sonnet、Claude 3 Opus |
 | **OpenAI**           | GPT-4 Turbo、GPT-4、o1-preview、o1-mini                          |
 | **Google Gemini**    | Gemini 2.0 Flash、Gemini 1.5 Pro、Gemini 1.5 Flash              |
-| **其他三方模型**           | ♾️                                                            |
+| **其他三方模型**           | 支持自定义模型和 API 端点                                              |
 ### 15+ 内置工具
 
 #### 文件操作
@@ -95,6 +103,45 @@ model: sonnet
 - **Token 追踪** - 实时显示用量和费用
 - **请求状态指示器** - 可视化请求进度
 - **权限确认对话框** - 敏感操作前确认
+
+#### 主题系统
+
+内置 7 套主题，支持语义色 token 体系：
+
+| 主题 | 说明 |
+|------|------|
+| `auto` | 跟随系统深色/浅色（默认） |
+| `dark` / `light` | RGB 深色/浅色 |
+| `dark-ansi` / `light-ansi` | 16 色终端兼容 |
+| `dark-daltonized` / `light-daltonized` | 色盲友好 |
+
+切换主题：`/theme` 或 `/theme dark`
+
+#### 吉祥物系统
+
+可插拔的吉祥物架构，内置 3 个角色：
+
+| 角色 | 配色 | 说明 |
+|------|------|------|
+| **Clawd** | 紫色 | 默认角色 |
+| **Robot** | 青色 | 机器人风格 |
+| **Cat** | 橙色 | 小猫形象 |
+
+切换吉祥物：`/mascot` 或 `/mascot cat`
+
+**新增角色**：在 `src/ui/ink/components/LogoV2/mascots/` 目录添加文件，实现 `MascotDefinition` 接口，注册到 `index.ts` 即可。
+
+#### 交互式选择器与面板
+
+- **ModelPicker** - 模型切换（`/model`）
+- **ThemePicker** - 主题切换（`/theme`）
+- **ConfigSetDialog** - 重新配置（`/config set`）
+- **HelpV2** - 帮助面板（`/help`）
+- **Settings** - 设置面板
+- **Stats** - 会话统计（`/stats`）
+- **DiagnosticsDisplay** - 系统诊断（`/doctor`）
+- **GlobalSearchDialog** - 全局搜索
+- **QuickOpenDialog** - 快速打开
 
 ### 安全机制
 
@@ -194,29 +241,43 @@ ai-agent-cli/
 │   │
 │   ├── ui/                       # UI 层（React + Ink）
 │   │   ├── UIController.ts       # UI 控制器接口
+│   │   ├── theme.ts              # 主题系统（7 套主题 + 语义色 token）
 │   │   ├── ink/
 │   │   │   ├── App.tsx           # 根组件
 │   │   │   ├── store.ts          # AppStore（外部状态管理）
 │   │   │   ├── InkUIController.ts # Ink UI 控制器实现
+│   │   │   ├── runInkOnboarding.ts # 独立 Ink 引导流程桥接
+│   │   │   ├── screens/          # 屏幕
+│   │   │   │   └── REPL.tsx      # 主 REPL 屏幕（集成所有选择器/面板）
 │   │   │   ├── components/       # UI 组件
+│   │   │   │   ├── Onboarding.tsx         # 首次运行引导（6 步）
+│   │   │   │   ├── ConfigSetDialog.tsx    # /config set 配置对话框
+│   │   │   │   ├── configShared.tsx       # 共享数据常量与输入组件
+│   │   │   │   ├── CustomSelect/          # 高级单选/多选组件
+│   │   │   │   ├── LogoV2/               # 启动横幅
+│   │   │   │   │   ├── Mascot.tsx         # 通用吉祥物渲染器
+│   │   │   │   │   ├── mascots/           # 吉祥物定义（插件式）
+│   │   │   │   │   │   ├── types.ts       # MascotDefinition 接口
+│   │   │   │   │   │   ├── clawd.ts       # Clawd 角色
+│   │   │   │   │   │   ├── robot.ts       # Robot 角色
+│   │   │   │   │   │   ├── cat.ts         # Cat 角色
+│   │   │   │   │   │   └── index.ts       # 注册表
+│   │   │   │   │   ├── LogoV2.tsx         # 完整版横幅
+│   │   │   │   │   └── CondensedLogo.tsx  # 简洁版横幅
+│   │   │   │   ├── Spinner/              # Spinner 动画
+│   │   │   │   ├── diff/                 # Diff 预览组件
+│   │   │   │   ├── HelpV2/              # 帮助面板
+│   │   │   │   ├── Settings/            # 设置面板
+│   │   │   │   ├── wizard/              # 向导框架
+│   │   │   │   ├── memory/              # 记忆面板
+│   │   │   │   ├── ui/                  # 通用 UI 原语（OrderedList 等）
 │   │   │   │   ├── UserInput.tsx          # 多行输入组件
-│   │   │   │   ├── StreamingText.tsx      # 流式文本渲染
-│   │   │   │   ├── ToolUseView.tsx        # 工具调用可视化
-│   │   │   │   ├── ToolResultView.tsx     # 工具结果展示
 │   │   │   │   ├── PermissionPrompt.tsx   # 权限确认
-│   │   │   │   ├── ThinkingSpinner.tsx    # 思考动画
-│   │   │   │   ├── HighlightedCode.tsx    # 代码高亮
 │   │   │   │   └── ...                    # 其他组件
 │   │   │   ├── hooks/            # React Hooks
-│   │   │   │   ├── useTextInput.ts        # 文本输入
-│   │   │   │   ├── useSlashCompletion.ts  # 斜杠补全
-│   │   │   │   ├── useStatusLine.ts       # 状态栏
-│   │   │   │   └── useDoublePress.ts      # 双击检测
-│   │   │   ├── dialogs/          # 对话框
+│   │   │   ├── keybindings/      # 快捷键绑定
+│   │   │   ├── context/          # React Context（overlay 等）
 │   │   │   └── completion/       # 命令补全
-│   │   ├── theme.ts              # 终端主题
-│   │   ├── markdown.ts           # Markdown 渲染
-│   │   └── keybindings.ts        # 快捷键映射
 │   │
 │   ├── utils/                    # 通用工具
 │   │   ├── cursor.ts             # 不可变光标和文本操作
@@ -251,47 +312,39 @@ git clone https://github.com/xpnobug/ai-agent-cli.git
 cd ai-agent-cli
 
 # 安装依赖
-npm install
+pnpm install
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，添加 API 密钥
+# 构建
+pnpm run build
 ```
 
-### 配置 API 密钥
-
-在 `.env` 文件中配置提供商和 API 密钥：
+### 首次运行
 
 ```bash
-# 选择提供商: anthropic | openai | gemini
-PROVIDER=anthropic
-
-# Anthropic Claude
-ANTHROPIC_API_KEY=your_anthropic_key
-# ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-
-# OpenAI
-# OPENAI_API_KEY=your_openai_key
-# OPENAI_MODEL=gpt-4-turbo-preview
-
-# Google Gemini
-# GEMINI_API_KEY=your_gemini_key
-# GEMINI_MODEL=gemini-2.0-flash-exp
-```
-
-### 运行
-
-```bash
-# 开发模式
-npm run dev
-
-# 构建并运行
-npm run build
-npm start
-
-# 全局安装后使用
+# 启动 CLI（首次运行自动进入引导流程）
+pnpm start
+# 或全局安装后
 npm link
-ai-agent-cli   # 或简写 aac
+aac
+```
+
+首次运行会启动交互式引导，依次完成：
+1. 选择 AI 提供商（Anthropic / OpenAI / Gemini）
+2. 输入 API Key
+3. 选择模型
+4. 选择终端主题
+5. 选择吉祥物
+6. 查看安全说明
+
+配置保存在 `~/.ai-agent/config.json`，后续启动直接进入主界面。
+
+### 手动配置（可选）
+
+也可以通过环境变量配置，在 `.env` 文件中设置：
+
+```bash
+cp .env.example .env
+# 编辑 .env 文件
 ```
 
 ## 使用示例
@@ -327,9 +380,46 @@ ai-agent-cli   # 或简写 aac
 >>> /skill install github-user/skill-repo
 ```
 
+### 常用斜杠命令
+
+| 命令 | 说明 |
+|------|------|
+| `/help` | 帮助面板 |
+| `/model` | 切换模型 |
+| `/theme` | 切换主题 |
+| `/mascot` | 切换吉祥物 |
+| `/config set` | 重新配置（提供商/Key/模型） |
+| `/stats` | 会话统计 |
+| `/doctor` | 系统诊断 |
+| `/compact` | 压缩对话历史 |
+| `/export` | 导出对话 |
+| `/clear` | 清屏 |
+
 ## 配置
 
-### 环境变量
+### 用户配置（~/.ai-agent/config.json）
+
+首次运行引导或 `/config set` 命令自动生成：
+
+```json
+{
+  "provider": "anthropic",
+  "apiKey": "sk-ant-...",
+  "model": "claude-sonnet-4-5-20250929",
+  "mascot": "clawd"
+}
+```
+
+| 字段 | 说明 | 必需 |
+|------|------|------|
+| `provider` | LLM 提供商 (anthropic/openai/gemini) | 是 |
+| `apiKey` | API 密钥 | 是 |
+| `model` | 模型名称 | 是 |
+| `baseUrl` | 自定义 API 端点 | 否 |
+| `mascot` | 吉祥物角色 (clawd/robot/cat) | 否 |
+| `statusLine` | 状态栏命令 | 否 |
+
+### 环境变量（.env）
 
 | 变量名 | 说明 | 必需 |
 |--------|------|------|
@@ -379,13 +469,13 @@ ai-agent-cli   # 或简写 aac
 ### 项目脚本
 
 ```bash
-npm run dev            # 开发模式（tsx 热重载）
-npm run build          # TypeScript 编译
-npm test               # 运行测试（Vitest）
-npm run test:ui        # 测试 UI 界面
-npm run test:coverage  # 测试覆盖率
-npm run lint           # ESLint 代码检查
-npm run lint:fix       # 自动修复代码风格
+pnpm run dev            # 开发模式（tsx 热重载）
+pnpm run build          # TypeScript 编译
+pnpm test               # 运行测试（Vitest）
+pnpm run test:ui        # 测试 UI 界面
+pnpm run test:coverage  # 测试覆盖率
+pnpm run lint           # ESLint 代码检查
+pnpm run lint:fix       # 自动修复代码风格
 ```
 
 ### 技术栈
