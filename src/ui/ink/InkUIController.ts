@@ -124,9 +124,21 @@ export class InkUIController implements UIController {
         this.showWarning(event.message);
         break;
 
-      case 'turn_complete':
-        // 由调用者处理
+      case 'turn_complete': {
+        // 推送轮次统计摘要
+        const snap = this._getTokenSnapshot();
+        if (snap.tokenCount && snap.tokenCount > 0) {
+          const toolCount = this.store.getState().completedItems
+            .filter(i => i.type === 'tool_result').length;
+          addCompleted(this.store, {
+            type: 'system',
+            level: 'info',
+            text: `${toolCount} tool uses · ${snap.tokenCount} tokens${snap.costUSD ? ` · $${snap.costUSD.toFixed(4)}` : ''}`,
+          });
+        }
+        resetToInput(this.store);
         break;
+      }
     }
   }
 

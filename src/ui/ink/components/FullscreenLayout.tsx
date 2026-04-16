@@ -230,11 +230,13 @@ function StickyPromptHeader({ text, onClick }: { text: string; onClick: () => vo
 }
 
 /**
- * PromptOverlayLayer — 渲染悬浮在输入区上方的建议列表/对话框。
+ * PromptOverlayLayer — 补全浮层
  *
- * 之所以单独拆成组件，是因为它必须处在 PromptOverlayProvider 内部
- * 才能读取 overlay context；同时它也会向 overlayContext 登记自身，
- * 方便后续统一处理焦点和 Esc 行为。
+ * - 无边框、无选中标记符号
+ * - 左列命令名 pad 到固定宽度（约终端 40%）
+ * - 右列描述文本截断
+ * - 选中项用 suggestion 色，未选中 dimColor
+ * - 最多显示 5 项，超出滚动窗口
  */
 function PromptOverlayLayer() {
   const overlayData = usePromptOverlay();
@@ -247,33 +249,52 @@ function PromptOverlayLayer() {
     return null;
   }
 
+  const OVERLAY_MAX_ITEMS = 5;
+  const columns = process.stdout.columns || 80;
+
+  // 计算可见窗口（选中项居中）
+  const suggestions = overlayData?.suggestions ?? [];
+  const selectedIdx = overlayData?.selectedSuggestion ?? 0;
+  const startIndex = Math.max(0, Math.min(
+    selectedIdx - Math.floor(OVERLAY_MAX_ITEMS / 2),
+    suggestions.length - OVERLAY_MAX_ITEMS,
+  ));
+  const endIndex = Math.min(startIndex + OVERLAY_MAX_ITEMS, suggestions.length);
+  const visibleItems = suggestions.slice(startIndex, endIndex);
+
+  // 左列宽度：命令名最大宽度 + padding，上限终端 40%
+  const maxNameLen = Math.max(...suggestions.map(s => s.displayValue.length), 0);
+  const displayTextWidth = Math.min(maxNameLen + 5, Math.floor(columns * 0.4));
+
   return (
     <Box position="absolute" bottom="100%" left={0} right={0} flexDirection="column">
       {overlayDialog}
-      {overlayData && overlayData.suggestions.length > 0 && (
-        <Box
-          flexDirection="column"
-          marginBottom={1}
-          paddingX={1}
-          paddingY={1}
-          borderStyle="round"
-          borderColor="gray"
-        >
-          {overlayData.suggestions.map((suggestion, index) => {
-            const isSelected = index === overlayData.selectedSuggestion;
-            const rawLabel = suggestion.displayValue;
-            const width = overlayData.maxColumnWidth;
-            const label =
-              typeof width === 'number' && width > 0
-                ? rawLabel.length > width
-                  ? `${rawLabel.slice(0, Math.max(0, width - 1))}…`
-                  : rawLabel
-                : rawLabel;
+      {visibleItems.length > 0 && (
+        <Box flexDirection="column">
+          {visibleItems.map((suggestion, i) => {
+            const actualIndex = startIndex + i;
+            const isSelected = actualIndex === selectedIdx;
+            const textColor = isSelected ? 'cyan' : undefined;
+            const shouldDim = !isSelected;
+
+            // 左列：pad 到固定宽度
+            let displayText = suggestion.displayValue;
+            if (displayText.length > displayTextWidth - 2) {
+              displayText = displayText.slice(0, displayTextWidth - 3) + '…';
+            }
+            const paddedName = displayText + ' '.repeat(Math.max(0, displayTextWidth - displayText.length));
+
+            // 右列：描述截断到剩余宽度
+            const descWidth = Math.max(0, columns - displayTextWidth - 4);
+            let desc = (suggestion.description || '').replace(/\s+/g, ' ');
+            if (desc.length > descWidth) {
+              desc = desc.slice(0, descWidth - 1) + '…';
+            }
 
             return (
-              <Text key={`${suggestion.value}-${index}`} color={isSelected ? 'cyan' : undefined} dimColor={!isSelected}>
-                {isSelected ? '◆ ' : '  '}
-                {label}
+              <Text key={`${suggestion.value}-${actualIndex}`} wrap="truncate">
+                <Text color={textColor} dimColor={shouldDim}>{paddedName}</Text>
+                <Text color={textColor} dimColor>{desc}</Text>
               </Text>
             );
           })}

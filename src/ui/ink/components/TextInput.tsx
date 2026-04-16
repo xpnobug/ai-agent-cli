@@ -8,7 +8,6 @@ import chalk from 'chalk';
 import type { Key } from '../primitives.js';
 import { useTextInput } from '../hooks/useTextInput.js';
 import { usePasteHandler } from '../hooks/usePasteHandler.js';
-import { getTheme } from '../../theme.js';
 import {
   shouldAggregatePasteChunk,
 } from '../utils/paste.js';
@@ -90,7 +89,6 @@ export default function TextInput({
   cursorOffset,
   onChangeCursorOffset,
 }: TextInputProps) {
-  const theme = getTheme();
   const { onInput, renderedValue } = useTextInput({
     value: originalValue,
     onChange,
@@ -328,13 +326,13 @@ export default function TextInput({
   useInput(wrappedOnInput, { isActive: focus });
 
   let renderedPlaceholder = placeholder
-    ? theme.textDim(placeholder)
+    ? chalk.dim(placeholder)
     : undefined;
 
   if (showCursor && focus) {
     renderedPlaceholder =
       placeholder.length > 0
-        ? chalk.inverse(placeholder[0]) + theme.textDim(placeholder.slice(1))
+        ? chalk.inverse(placeholder[0]) + chalk.dim(placeholder.slice(1))
         : chalk.inverse(' ');
   }
 

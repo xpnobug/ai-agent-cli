@@ -16,6 +16,10 @@ export const DEFAULT_KEYBINDING_BLOCKS: KeybindingBlock[] = [
       // 搜索
       '/': 'search:open',
       'ctrl+r': 'search:open',
+      // 快速打开文件
+      'ctrl+p': 'quickOpen:open',
+      // 全局内容搜索
+      'ctrl+shift+f': 'globalSearch:open',
       // 清屏
       'ctrl+l': 'clear:screen',
       // 帮助

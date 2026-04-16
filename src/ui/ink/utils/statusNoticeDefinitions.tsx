@@ -6,7 +6,6 @@
  * - 中性或正向状态不放在这里
  *
  * 适配说明：
- * - Claude Code 的“大 memory 文件”对应的是被注入系统提示词的 CLAUDE.md 体系
  * - 当前项目真正注入系统提示词的是 projectFile（默认 AI-AGENTS.md）
  * - 因此这里用“项目指令文件过大”作为等价提醒，而不是 .ai-agent/memory/
  */

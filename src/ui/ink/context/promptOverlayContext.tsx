@@ -20,7 +20,7 @@ import {
 // ─── 建议覆盖层 ───
 
 export interface PromptOverlayData {
-  suggestions: Array<{ value: string; displayValue: string }>;
+  suggestions: Array<{ value: string; displayValue: string; description?: string }>;
   selectedSuggestion: number;
   maxColumnWidth?: number;
 }

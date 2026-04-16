@@ -22,7 +22,25 @@ import { useCancelRequest } from '../hooks/useCancelRequest.js';
 import { useExitOnCtrlCD } from '../hooks/useExitOnCtrlCD.js';
 import { useCommandKeybindings } from '../hooks/useCommandKeybindings.js';
 import { ScrollKeybindingHandler } from '../components/ScrollKeybindingHandler.js';
+import { QuickOpenDialog } from '../components/QuickOpenDialog.js';
+import { GlobalSearchDialog } from '../components/GlobalSearchDialog.js';
+import { HelpV2 } from '../components/HelpV2/HelpV2.js';
+import { Settings } from '../components/Settings/Settings.js';
+import { ExportDialog } from '../components/ExportDialog.js';
+import { ModelPicker } from '../components/ModelPicker.js';
+import { ThemePicker } from '../components/ThemePicker.js';
+import { Stats } from '../components/Stats.js';
+import { DiagnosticsDisplay } from '../components/DiagnosticsDisplay.js';
+import { MessageSelector } from '../components/MessageSelector.js';
+import { OutputStylePicker } from '../components/OutputStylePicker.js';
+import { LanguagePicker } from '../components/LanguagePicker.js';
+import { LogSelector } from '../components/LogSelector.js';
+import { ConfigSetDialog } from '../components/ConfigSetDialog.js';
+import { MemoryUsageIndicator } from '../components/MemoryUsageIndicator.js';
+import { useCopyOnSelect } from '../hooks/useCopyOnSelect.js';
+import { useNotifyAfterTimeout } from '../hooks/useNotifyAfterTimeout.js';
 import type { ScrollBoxHandle } from '../primitives.js';
+import { setFocus } from '../store.js';
 
 export interface REPLProps {
   store: AppStateStore;
@@ -59,6 +77,8 @@ export function REPL({ store, onInput, onExit, onInterrupt, slashCommands, getTo
 
   useCancelRequest({ isLoading, focus, onInterrupt });
   useExitOnCtrlCD({ focus, isLoading, onExit });
+  useCopyOnSelect(!focus);
+  useNotifyAfterTimeout({ isLoading });
   useCommandKeybindings({
     store,
     enabled: !focus && !isLoading,
@@ -80,6 +100,12 @@ export function REPL({ store, onInput, onExit, onInterrupt, slashCommands, getTo
       />
       {isLoading && !focus && (
         <RequestStatusIndicator getTokenStats={getTokenStats} />
+      )}
+      {contextTokenUsage && !isLoading && !focus && (
+        <MemoryUsageIndicator
+          currentTokens={contextTokenUsage.currentTokens}
+          maxTokens={contextTokenUsage.maxTokens}
+        />
       )}
     </>
   );
@@ -118,6 +144,110 @@ export function REPL({ store, onInput, onExit, onInterrupt, slashCommands, getTo
           tasks={focus.tasks}
           onAction={(action, taskId) => focus.resolve({ action, taskId })}
           onCancel={() => focus.resolve(null)}
+        />
+      )}
+      {focus?.type === 'quick_open' && (
+        <QuickOpenDialog
+          workdir={focus.workdir}
+          onDone={() => setFocus(store, undefined)}
+          onInsert={focus.onInsert}
+        />
+      )}
+      {focus?.type === 'global_search' && (
+        <GlobalSearchDialog
+          workdir={focus.workdir}
+          onDone={() => setFocus(store, undefined)}
+          onInsert={focus.onInsert}
+        />
+      )}
+      {focus?.type === 'help_panel' && (
+        <HelpV2
+          commands={focus.commands}
+          onClose={() => { focus.resolve(); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'settings_panel' && (
+        <Settings
+          config={focus.config}
+          usage={focus.usage}
+          onClose={() => { focus.resolve(); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'export_dialog' && (
+        <ExportDialog
+          onExport={(fmt) => { focus.resolve(fmt); setFocus(store, undefined); }}
+          onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'model_picker' && (
+        <ModelPicker
+          currentModel={focus.currentModel}
+          provider={focus.provider}
+          onSelect={(model) => { focus.resolve(model); setFocus(store, undefined); }}
+          onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'theme_picker' && (
+        <ThemePicker
+          currentTheme=""
+          themes={[
+            { id: 'auto', name: 'Auto', description: '跟随系统深色/浅色' },
+            { id: 'dark', name: 'Dark', description: 'RGB 深色（默认）' },
+            { id: 'light', name: 'Light', description: 'RGB 浅色' },
+            { id: 'dark-ansi', name: 'Dark ANSI', description: '16 色深色（兼容性最好）' },
+            { id: 'light-ansi', name: 'Light ANSI', description: '16 色浅色' },
+            { id: 'dark-daltonized', name: 'Dark 色盲友好', description: '深色色盲优化' },
+            { id: 'light-daltonized', name: 'Light 色盲友好', description: '浅色色盲优化' },
+          ]}
+          onSelect={(theme) => { focus.resolve(theme); setFocus(store, undefined); }}
+          onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'stats_panel' && (
+        <Stats
+          data={focus.data}
+          onClose={() => { focus.resolve(); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'diagnostics' && (
+        <DiagnosticsDisplay
+          checks={focus.checks}
+          onClose={() => { focus.resolve(); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'message_selector' && (
+        <MessageSelector
+          items={completedItems}
+          onSelect={(index) => { focus.resolve(index); setFocus(store, undefined); }}
+          onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'output_style_picker' && (
+        <OutputStylePicker
+          currentStyle={focus.currentStyle as any}
+          onSelect={(style) => { focus.resolve(style); setFocus(store, undefined); }}
+          onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'language_picker' && (
+        <LanguagePicker
+          currentLanguage={focus.currentLanguage}
+          onSelect={(lang) => { focus.resolve(lang); setFocus(store, undefined); }}
+          onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'log_selector' && (
+        <LogSelector
+          currentLevel={focus.currentLevel as any}
+          onSelect={(level) => { focus.resolve(level); setFocus(store, undefined); }}
+          onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+        />
+      )}
+      {focus?.type === 'config_set' && (
+        <ConfigSetDialog
+          currentProvider={focus.currentProvider}
+          currentModel={focus.currentModel}
+          onDone={(result) => { focus.resolve(result); setFocus(store, undefined); }}
         />
       )}
       {!focus && (

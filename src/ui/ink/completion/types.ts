@@ -4,6 +4,7 @@
 
 export interface SlashCommandItem {
   name: string;
+  description?: string;
   aliases?: string[];
   isHidden?: boolean;
 }
@@ -11,6 +12,7 @@ export interface SlashCommandItem {
 export interface UnifiedSuggestion {
   value: string;
   displayValue: string;
+  description?: string;
   type: 'command';
   score: number;
 }

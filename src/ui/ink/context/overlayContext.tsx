@@ -60,12 +60,16 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
  */
 export function useRegisterOverlay(id: string, enabled = true): void {
   const ctx = useContext(OverlayContext);
+  // 取稳定的函数引用（useCallback 产出），不依赖整个 ctx 对象，
+  // 避免 activeOverlays 变化 → ctx 引用变化 → effect 重跑 → 无限循环。
+  const register = ctx?.registerOverlay;
+  const unregister = ctx?.unregisterOverlay;
 
   useEffect(() => {
-    if (!enabled || !ctx) return;
-    ctx.registerOverlay(id);
-    return () => ctx.unregisterOverlay(id);
-  }, [ctx, enabled, id]);
+    if (!enabled || !register || !unregister) return;
+    register(id);
+    return () => unregister(id);
+  }, [register, unregister, enabled, id]);
 }
 
 /**

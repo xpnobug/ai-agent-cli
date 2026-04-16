@@ -23,6 +23,7 @@ import type { ScrollBoxHandle } from '../primitives.js';
 import type { CompletedItem, ActiveToolUse } from '../types.js';
 import type { StreamingState } from '../types.js';
 import { ToolUseView } from './ToolUseView.js';
+import { ToolUseLoader } from './ToolUseLoader.js';
 import { VirtualMessageList } from './VirtualMessageList.js';
 import { MessageRow } from './messages/MessageRow.js';
 import { StreamingMarkdown } from './markdown/StreamingMarkdown.js';
@@ -225,13 +226,21 @@ function MessagesImpl({
       {activeToolUses.length > 0 && (
         <Box flexDirection="column" gap={1}>
           {activeToolUses.map((toolUse) => (
-            <ToolUseView
-              key={toolUse.toolUseId}
-              name={toolUse.name}
-              detail={toolUse.detail}
-              status={toolUse.status}
-              animate={toolUse.status === 'running'}
-            />
+            toolUse.status === 'running' ? (
+              <ToolUseLoader
+                key={toolUse.toolUseId}
+                toolName={toolUse.name}
+                description={toolUse.detail}
+              />
+            ) : (
+              <ToolUseView
+                key={toolUse.toolUseId}
+                name={toolUse.name}
+                detail={toolUse.detail}
+                status={toolUse.status}
+                animate={false}
+              />
+            )
           ))}
         </Box>
       )}

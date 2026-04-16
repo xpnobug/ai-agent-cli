@@ -1,5 +1,7 @@
 /**
  * 斜杠命令补全建议生成
+ *
+ * 每个建议包含 displayValue + description，用于双列布局。
  */
 
 import type { SlashCommandItem, UnifiedSuggestion } from './types.js';
@@ -15,6 +17,7 @@ export function generateSlashCommandSuggestions(args: {
     return filtered.map((cmd) => ({
       value: cmd.name,
       displayValue: `/${cmd.name}`,
+      description: cmd.description,
       type: 'command' as const,
       score: 100,
     }));
@@ -30,6 +33,7 @@ export function generateSlashCommandSuggestions(args: {
     .map((cmd) => ({
       value: cmd.name,
       displayValue: `/${cmd.name}`,
+      description: cmd.description,
       type: 'command' as const,
       score:
         100 -

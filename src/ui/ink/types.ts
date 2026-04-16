@@ -57,7 +57,13 @@ export type CompletedItem =
   | { id: string; type: 'user_image'; imageId?: number }
   | { id: string; type: 'bash_input'; command: string }
   | { id: string; type: 'bash_output'; stdout?: string; stderr?: string }
-  | { id: string; type: 'divider' };
+  | { id: string; type: 'divider' }
+  | { id: string; type: 'user_plan'; planContent: string }
+  | { id: string; type: 'plan_approval'; planContent: string; planFilePath?: string; approved?: boolean }
+  | { id: string; type: 'shutdown'; message?: string }
+  | { id: string; type: 'hook_progress'; hookName: string; status: 'running' | 'done' | 'error'; message?: string; elapsed?: number }
+  | { id: string; type: 'local_command_output'; stdout?: string; stderr?: string; commandName?: string }
+  | { id: string; type: 'memory_input'; text: string; filePath?: string };
 
 // ─── 正交状态类型 ───
 
@@ -124,6 +130,95 @@ export type FocusTarget =
       type: 'task_selector';
       tasks: TaskListItem[];
       resolve: (r: { action: 'output' | 'stop'; taskId: string } | null) => void;
+    }
+  | {
+      type: 'quick_open';
+      workdir: string;
+      onInsert: (text: string) => void;
+    }
+  | {
+      type: 'global_search';
+      workdir: string;
+      onInsert: (text: string) => void;
+    }
+  | {
+      type: 'help_panel';
+      commands: { name: string; description: string; isHidden?: boolean }[];
+      resolve: () => void;
+    }
+  | {
+      type: 'settings_panel';
+      config: {
+        provider: string;
+        model: string;
+        apiKeySet: boolean;
+        workdir: string;
+        permissionMode?: string;
+      };
+      usage?: {
+        totalTokens: number;
+        totalCost: number;
+        sessionDuration: number;
+        turns: number;
+      };
+      resolve: () => void;
+    }
+  | {
+      type: 'export_dialog';
+      resolve: (format: string | null) => void;
+    }
+  | {
+      type: 'model_picker';
+      currentModel: string;
+      provider: string;
+      resolve: (model: string | null) => void;
+    }
+  | {
+      type: 'theme_picker';
+      resolve: (theme: string | null) => void;
+    }
+  | {
+      type: 'config_set';
+      currentProvider: string;
+      currentModel: string;
+      resolve: (config: { provider: string; apiKey: string; model: string } | null) => void;
+    }
+  | {
+      type: 'stats_panel';
+      data: {
+        totalTokens: number;
+        totalCost: number;
+        turns: number;
+        toolCalls: number;
+        durationSeconds: number;
+        model: string;
+        provider: string;
+      };
+      resolve: () => void;
+    }
+  | {
+      type: 'diagnostics';
+      checks: { name: string; status: 'pass' | 'warn' | 'fail' | 'skip'; message?: string; detail?: string }[];
+      resolve: () => void;
+    }
+  | {
+      type: 'message_selector';
+      resolve: (index: number | null) => void;
+    }
+  | {
+      type: 'output_style_picker';
+      currentStyle: string;
+      resolve: (style: string | null) => void;
+    }
+  | {
+      type: 'language_picker';
+      currentLanguage: string;
+      resolve: (lang: string | null) => void;
+    }
+  | {
+      type: 'log_selector';
+      currentLevel: string;
+      resolve: (level: string | null) => void;
     };
 
 /**
@@ -145,7 +240,13 @@ export type CompletedItemInput =
   | { type: 'user_image'; imageId?: number }
   | { type: 'bash_input'; command: string }
   | { type: 'bash_output'; stdout?: string; stderr?: string }
-  | { type: 'divider' };
+  | { type: 'divider' }
+  | { type: 'user_plan'; planContent: string }
+  | { type: 'plan_approval'; planContent: string; planFilePath?: string; approved?: boolean }
+  | { type: 'shutdown'; message?: string }
+  | { type: 'hook_progress'; hookName: string; status: 'running' | 'done' | 'error'; message?: string; elapsed?: number }
+  | { type: 'local_command_output'; stdout?: string; stderr?: string; commandName?: string }
+  | { type: 'memory_input'; text: string; filePath?: string };
 
 /** 活跃中的工具调用（非 Static，允许动画与状态更新） */
 export type ActiveToolUse = {
