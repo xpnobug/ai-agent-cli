@@ -58,6 +58,18 @@ export const PROVIDER_NAMES: Record<Provider, string> = {
   gemini: 'Google Gemini',
 };
 
+// ─── 吉祥物选项（从注册表动态生成） ───
+
+import { getMascotRegistry } from './LogoV2/mascots/index.js';
+
+export function buildMascotOptions(): SelectOption<string>[] {
+  return getMascotRegistry().map((m, i) => ({
+    value: m.id,
+    label: m.name,
+    description: i === 0 ? '默认' : undefined,
+  }));
+}
+
 // ─── SimpleTextInput — 轻量文本输入组件 ───
 
 export interface SimpleTextInputProps {

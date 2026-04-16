@@ -17,6 +17,7 @@ export interface UserConfig {
     baseUrl?: string;
     statusLine?: string | { command?: string };
     projectFile?: string;
+    mascot?: string;
 }
 
 /**

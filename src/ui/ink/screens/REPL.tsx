@@ -4,7 +4,7 @@
  * 从 AppStateStore 订阅所有状态切片，组装 FullscreenLayout 的插槽。
  */
 
-import { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import type { AppStateStore } from '../store.js';
 import { useAppState } from '../hooks.js';
 import { FullscreenLayout, useUnseenDivider } from '../components/FullscreenLayout.js';
@@ -36,6 +36,9 @@ import { OutputStylePicker } from '../components/OutputStylePicker.js';
 import { LanguagePicker } from '../components/LanguagePicker.js';
 import { LogSelector } from '../components/LogSelector.js';
 import { ConfigSetDialog } from '../components/ConfigSetDialog.js';
+import { CustomSelect } from '../components/CustomSelect/index.js';
+import { buildMascotOptions } from '../components/configShared.js';
+import { Mascot } from '../components/LogoV2/Mascot.js';
 import { MemoryUsageIndicator } from '../components/MemoryUsageIndicator.js';
 import { useCopyOnSelect } from '../hooks/useCopyOnSelect.js';
 import { useNotifyAfterTimeout } from '../hooks/useNotifyAfterTimeout.js';
@@ -249,6 +252,17 @@ export function REPL({ store, onInput, onExit, onInterrupt, slashCommands, getTo
           currentModel={focus.currentModel}
           onDone={(result) => { focus.resolve(result); setFocus(store, undefined); }}
         />
+      )}
+      {focus?.type === 'mascot_picker' && (
+        <React.Fragment>
+          <Mascot variant={focus.currentMascot} />
+          <CustomSelect
+            options={buildMascotOptions()}
+            defaultValue={focus.currentMascot}
+            onChange={(value) => { focus.resolve(value); setFocus(store, undefined); }}
+            onCancel={() => { focus.resolve(null); setFocus(store, undefined); }}
+          />
+        </React.Fragment>
       )}
       {!focus && (
         <UserInput

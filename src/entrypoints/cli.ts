@@ -207,6 +207,7 @@ async function main(): Promise<void> {
       projectFile: config.projectFile,
       skills: skillLoader.listSkills(),
       agentTypes: getAgentTypeNames(),
+      mascot: userConfig.mascot,
     };
 
     // 17. 创建 AppStateStore（外部状态管理）

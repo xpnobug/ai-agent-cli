@@ -9,7 +9,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { Box, Text, useInput } from '../primitives.js';
-import { Clawd } from './LogoV2/Clawd.js';
+import { Mascot } from './LogoV2/Mascot.js';
 import { CustomSelect } from './CustomSelect/index.js';
 import { OrderedList } from './ui/OrderedList.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
@@ -23,11 +23,12 @@ import {
   THEME_OPTIONS,
   PROVIDER_NAMES,
   SimpleTextInput,
+  buildMascotOptions,
 } from './configShared.js';
 
 // ─── 步骤 ID ───
 
-type StepId = 'provider' | 'api-key' | 'model' | 'theme' | 'security';
+type StepId = 'provider' | 'api-key' | 'model' | 'theme' | 'mascot' | 'security';
 
 interface OnboardingStep {
   id: StepId;
@@ -39,7 +40,7 @@ interface OnboardingStep {
 function WelcomeBanner(): React.ReactNode {
   return (
     <Box flexDirection="column" alignItems="center" paddingX={2} paddingY={1}>
-      <Clawd pose="arms-up" />
+      <Mascot pose="arms-up" />
       <Box marginTop={1} flexDirection="column" alignItems="center">
         <Text bold color="magenta">
           {PRODUCT_NAME} v{VERSION}
@@ -68,6 +69,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
   const [customModelInput, setCustomModelInput] = useState('');
   const [customModelError, setCustomModelError] = useState('');
   const [isCustomModel, setIsCustomModel] = useState(false);
+  const [mascotId, setMascotId] = useState('clawd');
 
   // ─── 步骤导航 ───
 
@@ -81,7 +83,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
 
   function finishOnboarding() {
     if (!provider || !apiKey || !model) return;
-    const config: UserConfig = { provider, apiKey: apiKey.trim(), model };
+    const config: UserConfig = { provider, apiKey: apiKey.trim(), model, mascot: mascotId };
     saveUserConfig(config);
     onDone(config);
   }
@@ -211,11 +213,30 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     </Box>
   );
 
-  // ─── Step 5: 安全说明 ───
+  // ─── Step 5: 选择吉祥物 ───
+
+  function handleMascotSelect(value: string) {
+    setMascotId(value);
+    goToNextStep();
+  }
+
+  const mascotStep = (
+    <Box flexDirection="column" gap={1}>
+      <Text bold>{' '}请选择吉祥物：</Text>
+      <CustomSelect
+        options={buildMascotOptions()}
+        onChange={handleMascotSelect}
+        onCancel={() => goToNextStep()}
+      />
+      <Text dimColor>{' '}↑↓ 导航 · Enter 选择 · Esc 跳过</Text>
+    </Box>
+  );
+
+  // ─── Step 6: 安全说明 ───
 
   const handleSecurityContinue = useCallback(() => {
     finishOnboarding();
-  }, [provider, apiKey, model]);
+  }, [provider, apiKey, model, mascotId]);
 
   const SecurityStepContent = (): React.ReactNode => {
     useInput((_input, key) => {
@@ -263,6 +284,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     { id: 'api-key', component: apiKeyStep },
     { id: 'model', component: modelStep },
     { id: 'theme', component: themeStep },
+    { id: 'mascot', component: mascotStep },
     { id: 'security', component: securityStep },
   ];
 

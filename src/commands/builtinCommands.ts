@@ -662,6 +662,53 @@ export const themeCommand: SlashCommand = {
 };
 
 /**
+ * /mascot 命令 — 切换吉祥物
+ */
+export const mascotCommand: SlashCommand = {
+  name: 'mascot',
+  description: '查看或切换吉祥物',
+  async execute(args, context) {
+    const { getMascotRegistry, getMascotById } = await import('../ui/ink/components/LogoV2/mascots/index.js');
+    const { saveUserConfig, loadUserConfig } = await import('../services/config/configStore.js');
+    const registry = getMascotRegistry();
+    const currentConfig = loadUserConfig();
+    const currentMascot = currentConfig?.mascot ?? 'clawd';
+
+    if (!args && context.setFocus) {
+      return new Promise<string | void>((resolve) => {
+        context.setFocus!({
+          type: 'mascot_picker',
+          currentMascot,
+          resolve: (mascotId) => {
+            if (mascotId && currentConfig) {
+              saveUserConfig({ ...currentConfig, mascot: mascotId });
+              resolve(`吉祥物已切换为: ${getMascotById(mascotId).name}`);
+            } else {
+              resolve(undefined);
+            }
+          },
+        });
+      });
+    }
+
+    if (!args) {
+      const names = registry.map((m) => m.id).join(', ');
+      return `当前吉祥物: ${getMascotById(currentMascot).name}\n可选: ${names}`;
+    }
+
+    const id = args.trim().toLowerCase();
+    const mascot = registry.find((m) => m.id === id);
+    if (mascot && currentConfig) {
+      saveUserConfig({ ...currentConfig, mascot: id });
+      return `吉祥物已切换为: ${mascot.name}`;
+    }
+
+    const names = registry.map((m) => m.id).join(', ');
+    return `无效吉祥物: ${id}\n可选: ${names}`;
+  },
+};
+
+/**
  * /statusline 命令 - 设置状态栏命令
  */
 export const statuslineCommand: SlashCommand = {
@@ -1106,6 +1153,7 @@ export function getBuiltinCommands(): SlashCommand[] {
     initCommand,
     debugCommand,
     themeCommand,
+    mascotCommand,
     statuslineCommand,
     tasksCommand,
     doctorCommand,

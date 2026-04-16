@@ -17,6 +17,7 @@ export interface BannerConfig {
   projectFile: string;
   skills: string[];
   agentTypes: string[];
+  mascot?: string;
 }
 
 /**
@@ -182,6 +183,11 @@ export type FocusTarget =
       currentProvider: string;
       currentModel: string;
       resolve: (config: { provider: string; apiKey: string; model: string } | null) => void;
+    }
+  | {
+      type: 'mascot_picker';
+      currentMascot: string;
+      resolve: (mascotId: string | null) => void;
     }
   | {
       type: 'stats_panel';
