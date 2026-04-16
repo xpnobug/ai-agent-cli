@@ -9,7 +9,7 @@
  */
 
 import { Box, Text } from '../../primitives.js';
-import { Clawd } from './Clawd.js';
+import { Mascot } from './Mascot.js';
 import { PRODUCT_NAME, PRODUCT_VERSION } from '../../../../core/constants.js';
 import type { BannerConfig } from '../../types.js';
 
@@ -23,7 +23,7 @@ export function CondensedLogo({ config }: CondensedLogoProps) {
   return (
     <Box flexDirection="row" gap={2} alignItems="center" paddingBottom={1}>
       {/* 左侧：Clawd 像素字符画 */}
-      <Clawd />
+      <Mascot variant={config.mascot} />
 
       {/* 右侧：信息列 */}
       <Box flexDirection="column">

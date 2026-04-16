@@ -11,7 +11,7 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { PRODUCT_NAME, PRODUCT_VERSION } from '../../../../core/constants.js';
 import { getInkColors } from '../../../theme.js';
 import type { BannerConfig } from '../../types.js';
-import { Clawd } from './Clawd.js';
+import { Mascot } from './Mascot.js';
 import { FeedColumn } from './FeedColumn.js';
 import type { FeedConfig } from './Feed.js';
 
@@ -102,7 +102,7 @@ export function LogoV2({ config }: LogoV2Props) {
       >
         <Text bold>Welcome back!</Text>
         <Box marginY={1}>
-          <Clawd />
+          <Mascot variant={config.mascot} />
         </Box>
         <Text dimColor>{modelLine}</Text>
         <Text dimColor>{cwdLine}</Text>
@@ -137,7 +137,7 @@ export function LogoV2({ config }: LogoV2Props) {
           <Box marginTop={1}>
             <Text bold>Welcome back!</Text>
           </Box>
-          <Clawd />
+          <Mascot variant={config.mascot} />
           <Box flexDirection="column" alignItems="center">
             <Text dimColor>{modelLine}</Text>
             <Text dimColor>{cwdLine}</Text>
