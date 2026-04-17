@@ -1,116 +1,108 @@
 /**
  * ModelPicker — 模型选择器
  *
- * 功能：通过 FuzzyPicker 列出当前 provider 可用模型，选择后切换。
- * 适配：支持多 provider（Anthropic/OpenAI/Gemini），去掉 Effort/FastMode 依赖。
+ * - 分 provider 展示模型列表，带描述和上下文长度
+ * - 当前选中模型显示 ✓ 标记和模型 ID
+ * - 使用 CustomSelect 替代 FuzzyPicker
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Box, Text } from '../primitives.js';
-import { FuzzyPicker } from './design-system/FuzzyPicker.js';
+import { CustomSelect, type SelectOption } from './CustomSelect/index.js';
 import { useRegisterOverlay } from '../context/overlayContext.js';
-import { getModelDisplayName, getModelContextLength } from '../../../utils/modelConfig.js';
+
+// ─── 模型定义 ───
+
+interface ModelDef {
+  id: string;           // 模型 ID（传给 API）
+  name: string;         // 显示名称
+  description: string;  // 简短描述
+  context: string;      // 上下文长度
+}
+
+const ANTHROPIC_MODELS: ModelDef[] = [
+  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', description: '最强推理 · $3/$15 per Mtok', context: '200K' },
+  { id: 'claude-opus-4-6[1m]', name: 'Claude Opus 4.6 (1M)', description: '最强推理 · 1M 上下文', context: '1M' },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', description: '推荐 · $3/$15 per Mtok', context: '200K' },
+  { id: 'claude-sonnet-4-6[1m]', name: 'Claude Sonnet 4.6 (1M)', description: '推荐 · 长会话', context: '1M' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', description: '最快速 · $1/$5 per Mtok', context: '200K' },
+  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', description: '上一代推荐', context: '200K' },
+  { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', description: '上一代旗舰', context: '200K' },
+];
+
+const OPENAI_MODELS: ModelDef[] = [
+  { id: 'gpt-4-turbo-preview', name: 'GPT-4 Turbo', description: '推荐 · 高速高质量', context: '128K' },
+  { id: 'gpt-4', name: 'GPT-4', description: '稳定版本', context: '128K' },
+  { id: 'gpt-4o', name: 'GPT-4o', description: '多模态优化', context: '128K' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: '轻量快速', context: '128K' },
+  { id: 'o1-preview', name: 'o1 Preview', description: '深度推理', context: '128K' },
+  { id: 'o1-mini', name: 'o1 Mini', description: '轻量推理', context: '128K' },
+  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: '经济实惠', context: '16K' },
+];
+
+const GEMINI_MODELS: ModelDef[] = [
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: '推荐 · 最强性能', context: '2M' },
+  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', description: '实验性高速', context: '1M' },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: '高速低成本', context: '1M' },
+  { id: 'gemini-pro', name: 'Gemini Pro', description: '基础版本', context: '32K' },
+];
+
+const MODEL_REGISTRY: Record<string, ModelDef[]> = {
+  anthropic: ANTHROPIC_MODELS,
+  openai: OPENAI_MODELS,
+  gemini: GEMINI_MODELS,
+};
+
+const PROVIDER_NAMES: Record<string, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  gemini: 'Google Gemini',
+};
+
+// ─── 组件 ───
 
 type Props = {
-  /** 当前选中的模型 */
   currentModel: string;
-  /** 当前 provider */
   provider: string;
-  /** 选择模型后的回调 */
   onSelect: (model: string) => void;
-  /** 取消 */
   onCancel: () => void;
 };
 
-type ModelItem = {
-  model: string;
-  displayName: string;
-  contextLength: number;
-  lower: string;
-};
-
-/** 按 provider 获取模型列表 */
-function getModelsForProvider(provider: string): string[] {
-  switch (provider.toLowerCase()) {
-    case 'anthropic':
-      return [
-        'claude-opus-4-20250514',
-        'claude-sonnet-4-20250514',
-        'claude-3.5-sonnet',
-        'claude-3-opus',
-        'claude-3-sonnet',
-        'claude-3-haiku',
-      ];
-    case 'openai':
-      return [
-        'gpt-4',
-        'gpt-4-turbo',
-        'gpt-4-turbo-preview',
-        'gpt-4-0125-preview',
-        'gpt-3.5-turbo',
-        'o1-preview',
-        'o1-mini',
-      ];
-    case 'gemini':
-      return [
-        'gemini-2.0-flash-exp',
-        'gemini-1.5-pro',
-        'gemini-1.5-flash',
-        'gemini-1.0-pro',
-      ];
-    default:
-      return [];
-  }
-}
-
-/** 格式化 token 数量 */
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(0)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
-  return String(tokens);
-}
-
 export function ModelPicker({ currentModel, provider, onSelect, onCancel }: Props): React.ReactNode {
   useRegisterOverlay('model-picker');
-  const [query, setQuery] = useState('');
 
-  const allModels = useMemo((): ModelItem[] => {
-    return getModelsForProvider(provider).map((model) => ({
-      model,
-      displayName: getModelDisplayName(model),
-      contextLength: getModelContextLength(provider, model),
-      lower: model.toLowerCase(),
+  const options = useMemo((): SelectOption<string>[] => {
+    const models = MODEL_REGISTRY[provider.toLowerCase()] ?? [];
+    return models.map((m) => ({
+      value: m.id,
+      label: m.id === currentModel ? `${m.name} ✓` : m.name,
+      description: `${m.description} · ${m.context} ctx`,
     }));
-  }, [provider]);
+  }, [provider, currentModel]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return allModels;
-    return allModels.filter((item) => item.lower.includes(q));
-  }, [allModels, query]);
+  // 当前选中模型的 ID 显示
+  const currentDef = (MODEL_REGISTRY[provider.toLowerCase()] ?? []).find((m) => m.id === currentModel);
 
   return (
-    <FuzzyPicker
-      title={`选择模型 (${provider})`}
-      placeholder="输入模型名称搜索…"
-      items={filtered}
-      getKey={(item) => item.model}
-      onQueryChange={setQuery}
-      onSelect={(item) => onSelect(item.model)}
-      onCancel={onCancel}
-      emptyMessage="未找到匹配模型"
-      selectAction="切换"
-      renderItem={(item, isFocused) => (
-        <Box gap={2}>
-          <Text color={isFocused ? 'cyan' : undefined} bold={item.model === currentModel}>
-            {item.model === currentModel ? '● ' : '  '}
-            {item.displayName}
-          </Text>
-          <Text dimColor>
-            {formatTokens(item.contextLength)} ctx
-          </Text>
-        </Box>
+    <Box flexDirection="column" gap={1}>
+      <Box flexDirection="column">
+        <Text bold>选择模型</Text>
+        <Text dimColor>
+          切换 {PROVIDER_NAMES[provider.toLowerCase()] ?? provider} 模型，选择后需重启生效。
+        </Text>
+      </Box>
+      <CustomSelect
+        options={options}
+        defaultValue={currentModel}
+        onChange={onSelect}
+        onCancel={onCancel}
+      />
+      {currentDef && (
+        <Text dimColor>
+          当前: {currentDef.name} ({currentModel})
+        </Text>
       )}
-    />
+      <Text dimColor>Enter 确认 · Esc 取消</Text>
+    </Box>
   );
 }

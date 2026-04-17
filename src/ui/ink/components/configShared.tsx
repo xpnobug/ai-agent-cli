@@ -2,10 +2,18 @@
  * configShared — Onboarding 和 ConfigSetDialog 共享的数据常量与输入组件
  */
 
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from '../primitives.js';
 import type { SelectOption } from './CustomSelect/index.js';
 import type { Provider } from '../../../core/types.js';
+import { usePasteHandler } from '../hooks/usePasteHandler.js';
+import { normalizeLineEndings } from '../utils/paste.js';
+import {
+  acquireBracketedPasteMode,
+  releaseBracketedPasteMode,
+  consumeBracketedPasteStream,
+  type BracketedPasteStreamState,
+} from '../utils/bracketedPasteStream.js';
 
 // ─── 提供商选项 ───
 
@@ -19,9 +27,10 @@ export const PROVIDER_OPTIONS: SelectOption<string>[] = [
 
 export const MODEL_OPTIONS: Record<Provider, SelectOption<string>[]> = {
   anthropic: [
-    { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', description: '推荐' },
-    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', description: '推荐' },
+    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6', description: '最强推理' },
+    { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', description: '最快速' },
+    { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
     { value: '__custom__', label: '自定义模型...', description: '手动输入' },
   ],
   openai: [
@@ -58,6 +67,12 @@ export const PROVIDER_NAMES: Record<Provider, string> = {
   gemini: 'Google Gemini',
 };
 
+/** API Base URL：默认官方端点 vs 自定义（代理/兼容网关） */
+export const BASE_URL_MODE_OPTIONS: SelectOption<string>[] = [
+  { value: '__default__', label: '使用官方默认 API 端点' },
+  { value: '__custom__', label: '自定义 Base URL...', description: '代理 / 兼容网关' },
+];
+
 // ─── 吉祥物选项（从注册表动态生成） ───
 
 import { getMascotRegistry } from './LogoV2/mascots/index.js';
@@ -68,6 +83,13 @@ export function buildMascotOptions(): SelectOption<string>[] {
     label: m.name,
     description: i === 0 ? '默认' : undefined,
   }));
+}
+
+/** 单行字段：粘贴时去掉换行与控制字符（与逐字输入行为一致） */
+function sanitizeSingleLinePastedText(text: string): string {
+  return normalizeLineEndings(text)
+    .replace(/[\r\n]/g, '')
+    .replace(/[\x00-\x1F\x7F]/g, '');
 }
 
 // ─── SimpleTextInput — 轻量文本输入组件 ───
@@ -89,22 +111,74 @@ export function SimpleTextInput({
   placeholder,
   mask,
 }: SimpleTextInputProps): React.ReactNode {
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const bracketedPasteState = useRef<BracketedPasteStreamState>({
+    mode: 'normal',
+    incomplete: '',
+    buffer: '',
+  });
+
+  useEffect(() => {
+    acquireBracketedPasteMode();
+    return () => releaseBracketedPasteMode();
+  }, []);
+
+  const appendPasted = useCallback(
+    (raw: string) => {
+      const chunk = sanitizeSingleLinePastedText(raw);
+      if (chunk) {
+        onChange(valueRef.current + chunk);
+      }
+    },
+    [onChange]
+  );
+
+  const { handlePaste } = usePasteHandler({
+    onTextPaste: appendPasted,
+  });
+
   useInput((input, key) => {
     if (key.escape && onCancel) {
       onCancel();
       return;
     }
     if (key.return) {
-      onSubmit(value);
+      onSubmit(valueRef.current);
       return;
     }
     if (key.backspace || key.delete) {
-      onChange(value.slice(0, -1));
+      onChange(valueRef.current.slice(0, -1));
       return;
     }
-    // 过滤控制字符，只接受可打印字符
+    if (
+      input &&
+      consumeBracketedPasteStream(input, bracketedPasteState.current, {
+        onPlainText: (t) => {
+          if (!t) return;
+          if (t.length === 1) {
+            const code = t.charCodeAt(0);
+            if (!key.ctrl && !key.meta && code >= 32) {
+              onChange(valueRef.current + t);
+            }
+            return;
+          }
+          appendPasted(t);
+        },
+        onPasteComplete: (t) => handlePaste(t),
+      })
+    ) {
+      return;
+    }
+    if (input && !key.ctrl && !key.meta && input.length > 1) {
+      handlePaste(input);
+      return;
+    }
     if (input && !key.ctrl && !key.meta && input.length === 1 && input.charCodeAt(0) >= 32) {
-      onChange(value + input);
+      onChange(valueRef.current + input);
     }
   });
 

@@ -4,12 +4,17 @@
 
 // Anthropic Claude 模型
 const ANTHROPIC_MODELS: Record<string, number> = {
+    'claude-opus-4-6': 200000,
+    'claude-opus-4-6[1m]': 1000000,
+    'claude-sonnet-4-6': 200000,
+    'claude-sonnet-4-6[1m]': 1000000,
+    'claude-haiku-4-5-20251001': 200000,
+    'claude-sonnet-4-5-20250929': 200000,
     'claude-opus-4-20250514': 200000,
     'claude-sonnet-4-20250514': 200000,
-    'claude-3.5-sonnet': 200000,
-    'claude-3-opus': 200000,
-    'claude-3-sonnet': 200000,
-    'claude-3-haiku': 200000,
+    'claude-3-5-sonnet-20241022': 200000,
+    'claude-3-opus-20240229': 200000,
+    'claude-3-haiku-20240307': 200000,
 };
 
 // OpenAI 模型
@@ -65,11 +70,18 @@ export function getModelDisplayName(model: string): string {
 
     // 已知的简化映射
     const displayNames: Record<string, string> = {
-        'claude-opus-4': 'claude-opus-4',
-        'claude-sonnet-4': 'claude-sonnet-4',
-        'claude-3.5-sonnet': 'claude-3.5-sonnet',
-        'gemini-2.0-flash-exp': 'gemini-2.0-flash',
-        'gpt-4-turbo-preview': 'gpt-4-turbo',
+        'claude-opus-4-6': 'Claude Opus 4.6',
+        'claude-opus-4-6[1m]': 'Claude Opus 4.6 (1M)',
+        'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+        'claude-sonnet-4-6[1m]': 'Claude Sonnet 4.6 (1M)',
+        'claude-haiku-4-5': 'Claude Haiku 4.5',
+        'claude-sonnet-4-5': 'Claude Sonnet 4.5',
+        'claude-opus-4': 'Claude Opus 4',
+        'claude-sonnet-4': 'Claude Sonnet 4',
+        'claude-3-5-sonnet': 'Claude 3.5 Sonnet',
+        'claude-3-opus': 'Claude 3 Opus',
+        'gemini-2.0-flash-exp': 'Gemini 2.0 Flash',
+        'gpt-4-turbo-preview': 'GPT-4 Turbo',
     };
 
     return displayNames[withoutDate] || withoutDate;

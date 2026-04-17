@@ -2,32 +2,39 @@
  * ConfigSetDialog — /config set 命令的配置修改对话框
  *
  * 作为 REPL 内的 focus overlay 运行，复用 Onboarding 的共享数据和组件。
- * 步骤：提供商选择 → API Key → 模型选择
+ * 步骤：提供商选择 → API Key → 模型选择 → API Base URL（官方 / 自定义）
  */
 
 import React, { useState } from 'react';
 import { Box, Text } from '../primitives.js';
 import { CustomSelect } from './CustomSelect/index.js';
-import { saveUserConfig, type UserConfig } from '../../../services/config/configStore.js';
+import { mergeAndSaveUserConfig } from '../../../services/config/configStore.js';
 import type { Provider } from '../../../core/types.js';
 import {
   PROVIDER_OPTIONS,
   MODEL_OPTIONS,
   PROVIDER_NAMES,
+  BASE_URL_MODE_OPTIONS,
   SimpleTextInput,
 } from './configShared.js';
 
-type ConfigResult = { provider: string; apiKey: string; model: string } | null;
+type ConfigResult = { provider: string; apiKey: string; model: string; baseUrl?: string } | null;
 
 type Props = {
   currentProvider: string;
   currentModel: string;
+  currentBaseUrl?: string;
   onDone: (result: ConfigResult) => void;
 };
 
-type ConfigStep = 'provider' | 'api-key' | 'model';
+type ConfigStep = 'provider' | 'api-key' | 'model' | 'base-url';
 
-export function ConfigSetDialog({ currentProvider, currentModel, onDone }: Props): React.ReactNode {
+export function ConfigSetDialog({
+  currentProvider,
+  currentModel,
+  currentBaseUrl,
+  onDone,
+}: Props): React.ReactNode {
   const [step, setStep] = useState<ConfigStep>('provider');
   const [provider, setProvider] = useState<Provider | null>(null);
   const [apiKey, setApiKey] = useState('');
@@ -35,6 +42,10 @@ export function ConfigSetDialog({ currentProvider, currentModel, onDone }: Props
   const [customModelInput, setCustomModelInput] = useState('');
   const [customModelError, setCustomModelError] = useState('');
   const [isCustomModel, setIsCustomModel] = useState(false);
+  const [chosenModel, setChosenModel] = useState<string | null>(null);
+  const [customBaseUrlInput, setCustomBaseUrlInput] = useState('');
+  const [customBaseUrlError, setCustomBaseUrlError] = useState('');
+  const [isCustomBaseUrl, setIsCustomBaseUrl] = useState(false);
 
   // ─── 提供商选择 ───
 
@@ -65,7 +76,8 @@ export function ConfigSetDialog({ currentProvider, currentModel, onDone }: Props
       setIsCustomModel(true);
       return;
     }
-    finishConfig(value);
+    setChosenModel(value);
+    setStep('base-url');
   }
 
   function handleCustomModelSubmit(value: string) {
@@ -76,14 +88,44 @@ export function ConfigSetDialog({ currentProvider, currentModel, onDone }: Props
     }
     setCustomModelError('');
     setIsCustomModel(false);
-    finishConfig(trimmed);
+    setChosenModel(trimmed);
+    setStep('base-url');
   }
 
-  function finishConfig(model: string) {
-    if (!provider || !apiKey) return;
-    const config: UserConfig = { provider, apiKey, model };
-    saveUserConfig(config);
-    onDone({ provider, apiKey, model });
+  // ─── Base URL ───
+
+  function finalizeSave(baseUrl: string | undefined, clearBaseUrl: boolean) {
+    if (!provider || !apiKey || !chosenModel) return;
+    if (clearBaseUrl) {
+      mergeAndSaveUserConfig({ provider, apiKey, model: chosenModel }, { clearBaseUrl: true });
+      onDone({ provider, apiKey, model: chosenModel });
+      return;
+    }
+    if (baseUrl) {
+      mergeAndSaveUserConfig({ provider, apiKey, model: chosenModel, baseUrl });
+      onDone({ provider, apiKey, model: chosenModel, baseUrl });
+    }
+  }
+
+  function handleBaseUrlModeSelect(value: string) {
+    if (value === '__default__') {
+      finalizeSave(undefined, true);
+      return;
+    }
+    if (value === '__custom__') {
+      setIsCustomBaseUrl(true);
+    }
+  }
+
+  function handleCustomBaseUrlSubmit(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('http')) {
+      setCustomBaseUrlError('请输入有效的 URL (以 http:// 或 https:// 开头)');
+      return;
+    }
+    setCustomBaseUrlError('');
+    setIsCustomBaseUrl(false);
+    finalizeSave(trimmed, false);
   }
 
   // ─── 渲染 ───
@@ -149,6 +191,43 @@ export function ConfigSetDialog({ currentProvider, currentModel, onDone }: Props
                 <CustomSelect
                   options={provider ? MODEL_OPTIONS[provider] : []}
                   onChange={handleModelSelect}
+                  onCancel={() => onDone(null)}
+                />
+                <Text dimColor>↑↓ 导航 · Enter 选择 · Esc 取消</Text>
+              </>
+            )}
+          </Box>
+        )}
+
+        {step === 'base-url' && (
+          <Box flexDirection="column" gap={1}>
+            <Text bold>
+              API 端点
+              {currentBaseUrl ? (
+                <Text dimColor> (当前自定义: {currentBaseUrl})</Text>
+              ) : (
+                <Text dimColor> (当前: 官方默认)</Text>
+              )}
+              ：
+            </Text>
+            {isCustomBaseUrl ? (
+              <Box flexDirection="column" gap={1}>
+                <Text>请输入 Base URL：</Text>
+                <SimpleTextInput
+                  value={customBaseUrlInput}
+                  onChange={(v) => { setCustomBaseUrlInput(v); setCustomBaseUrlError(''); }}
+                  onSubmit={handleCustomBaseUrlSubmit}
+                  onCancel={() => setIsCustomBaseUrl(false)}
+                  placeholder="https://..."
+                />
+                {customBaseUrlError ? <Text color="red">{customBaseUrlError}</Text> : null}
+                <Text dimColor>Enter 确认 · Esc 返回上一项</Text>
+              </Box>
+            ) : (
+              <>
+                <CustomSelect
+                  options={BASE_URL_MODE_OPTIONS}
+                  onChange={handleBaseUrlModeSelect}
                   onCancel={() => onDone(null)}
                 />
                 <Text dimColor>↑↓ 导航 · Enter 选择 · Esc 取消</Text>

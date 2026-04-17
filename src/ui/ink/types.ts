@@ -182,7 +182,8 @@ export type FocusTarget =
       type: 'config_set';
       currentProvider: string;
       currentModel: string;
-      resolve: (config: { provider: string; apiKey: string; model: string } | null) => void;
+      currentBaseUrl?: string;
+      resolve: (config: { provider: string; apiKey: string; model: string; baseUrl?: string } | null) => void;
     }
   | {
       type: 'mascot_picker';

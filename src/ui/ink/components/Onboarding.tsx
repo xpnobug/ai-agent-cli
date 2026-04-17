@@ -15,20 +15,21 @@ import { OrderedList } from './ui/OrderedList.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { PRODUCT_NAME, VERSION } from '../../../core/constants.js';
 import { setTheme, THEME_SETTINGS, type ThemeSetting } from '../../theme.js';
-import { saveUserConfig, type UserConfig } from '../../../services/config/configStore.js';
+import { mergeAndSaveUserConfig, type UserConfig } from '../../../services/config/configStore.js';
 import type { Provider } from '../../../core/types.js';
 import {
   PROVIDER_OPTIONS,
   MODEL_OPTIONS,
   THEME_OPTIONS,
   PROVIDER_NAMES,
+  BASE_URL_MODE_OPTIONS,
   SimpleTextInput,
   buildMascotOptions,
 } from './configShared.js';
 
 // ─── 步骤 ID ───
 
-type StepId = 'provider' | 'api-key' | 'model' | 'theme' | 'mascot' | 'security';
+type StepId = 'provider' | 'api-key' | 'model' | 'api-base' | 'theme' | 'mascot' | 'security';
 
 interface OnboardingStep {
   id: StepId;
@@ -69,6 +70,10 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
   const [customModelInput, setCustomModelInput] = useState('');
   const [customModelError, setCustomModelError] = useState('');
   const [isCustomModel, setIsCustomModel] = useState(false);
+  const [resolvedBaseUrl, setResolvedBaseUrl] = useState<string | undefined>(undefined);
+  const [customBaseUrlInput, setCustomBaseUrlInput] = useState('');
+  const [customBaseUrlError, setCustomBaseUrlError] = useState('');
+  const [isCustomBaseUrl, setIsCustomBaseUrl] = useState(false);
   const [mascotId, setMascotId] = useState('clawd');
 
   // ─── 步骤导航 ───
@@ -83,8 +88,18 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
 
   function finishOnboarding() {
     if (!provider || !apiKey || !model) return;
-    const config: UserConfig = { provider, apiKey: apiKey.trim(), model, mascot: mascotId };
-    saveUserConfig(config);
+    const config = resolvedBaseUrl
+      ? mergeAndSaveUserConfig({
+          provider,
+          apiKey: apiKey.trim(),
+          model,
+          mascot: mascotId,
+          baseUrl: resolvedBaseUrl,
+        })
+      : mergeAndSaveUserConfig(
+          { provider, apiKey: apiKey.trim(), model, mascot: mascotId },
+          { clearBaseUrl: true }
+        );
     onDone(config);
   }
 
@@ -192,7 +207,61 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     </Box>
   );
 
-  // ─── Step 4: 选择主题 ───
+  // ─── Step 4: API Base URL（官方 / 自定义代理） ───
+
+  function handleBaseUrlModeSelect(value: string) {
+    if (value === '__default__') {
+      setResolvedBaseUrl(undefined);
+      goToNextStep();
+      return;
+    }
+    if (value === '__custom__') {
+      setIsCustomBaseUrl(true);
+    }
+  }
+
+  function handleCustomBaseUrlSubmit(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('http')) {
+      setCustomBaseUrlError('请输入有效的 URL (以 http:// 或 https:// 开头)');
+      return;
+    }
+    setCustomBaseUrlError('');
+    setResolvedBaseUrl(trimmed);
+    setIsCustomBaseUrl(false);
+    goToNextStep();
+  }
+
+  const apiBaseStep = (
+    <Box flexDirection="column" gap={1}>
+      <Text bold>{' '}API 端点：</Text>
+      {isCustomBaseUrl ? (
+        <Box flexDirection="column" gap={1}>
+          <Text>{' '}请输入 Base URL：</Text>
+          <SimpleTextInput
+            value={customBaseUrlInput}
+            onChange={(v) => { setCustomBaseUrlInput(v); setCustomBaseUrlError(''); }}
+            onSubmit={handleCustomBaseUrlSubmit}
+            onCancel={() => setIsCustomBaseUrl(false)}
+            placeholder="https://..."
+          />
+          {customBaseUrlError ? <Text color="red">{' '}{customBaseUrlError}</Text> : null}
+          <Text dimColor>{' '}Enter 确认 · Esc 返回上一项</Text>
+        </Box>
+      ) : (
+        <>
+          <CustomSelect
+            options={BASE_URL_MODE_OPTIONS}
+            onChange={handleBaseUrlModeSelect}
+            onCancel={() => onDone(null)}
+          />
+          <Text dimColor>{' '}↑↓ 导航 · Enter 选择 · Esc 退出</Text>
+        </>
+      )}
+    </Box>
+  );
+
+  // ─── Step 5: 选择主题 ───
 
   function handleThemeSelect(value: string) {
     if (THEME_SETTINGS.includes(value as ThemeSetting)) {
@@ -213,7 +282,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     </Box>
   );
 
-  // ─── Step 5: 选择吉祥物 ───
+  // ─── Step 6: 选择吉祥物 ───
 
   function handleMascotSelect(value: string) {
     setMascotId(value);
@@ -232,11 +301,11 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     </Box>
   );
 
-  // ─── Step 6: 安全说明 ───
+  // ─── Step 7: 安全说明 ───
 
   const handleSecurityContinue = useCallback(() => {
     finishOnboarding();
-  }, [provider, apiKey, model, mascotId]);
+  }, [provider, apiKey, model, mascotId, resolvedBaseUrl]);
 
   const SecurityStepContent = (): React.ReactNode => {
     useInput((_input, key) => {
@@ -283,6 +352,7 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     { id: 'provider', component: providerStep },
     { id: 'api-key', component: apiKeyStep },
     { id: 'model', component: modelStep },
+    { id: 'api-base', component: apiBaseStep },
     { id: 'theme', component: themeStep },
     { id: 'mascot', component: mascotStep },
     { id: 'security', component: securityStep },

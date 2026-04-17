@@ -250,6 +250,7 @@ export function REPL({ store, onInput, onExit, onInterrupt, slashCommands, getTo
         <ConfigSetDialog
           currentProvider={focus.currentProvider}
           currentModel={focus.currentModel}
+          currentBaseUrl={focus.currentBaseUrl}
           onDone={(result) => { focus.resolve(result); setFocus(store, undefined); }}
         />
       )}

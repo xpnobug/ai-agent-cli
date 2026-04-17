@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import type { Provider } from '../../core/types.js';
 import { PRODUCT_NAME } from '../../core/constants.js';
 import { DEFAULT_ENDPOINTS } from './types.js';
-import { saveUserConfig, getConfigPath, type UserConfig } from './configStore.js';
+import { mergeAndSaveUserConfig, getConfigPath, type UserConfig } from './configStore.js';
 
 type EnquirerPrompt<T> = { run(): Promise<T> };
 type EnquirerClass<T> = new (options: Record<string, unknown>) => EnquirerPrompt<T>;
@@ -155,16 +155,11 @@ export async function runSetupWizard(): Promise<UserConfig | null> {
             baseUrl = await urlPrompt.run();
         }
 
-        // 5. 构建配置
-        const config: UserConfig = {
-            provider,
-            apiKey: apiKey.trim(),
-            model,
-            ...(baseUrl && { baseUrl }),
-        };
-
-        // 6. 保存配置
-        saveUserConfig(config);
+        // 5. 合并写入（保留吉祥物、项目文件等已有字段；关闭代理时清除 baseUrl）
+        const config =
+            useCustomUrl && baseUrl
+                ? mergeAndSaveUserConfig({ provider, apiKey: apiKey.trim(), model, baseUrl })
+                : mergeAndSaveUserConfig({ provider, apiKey: apiKey.trim(), model }, { clearBaseUrl: true });
         printSuccess();
 
         return config;

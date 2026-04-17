@@ -72,6 +72,26 @@ export function saveUserConfig(config: UserConfig): void {
 }
 
 /**
+ * 将变更合并进现有 ~/.ai-agent/config.json 并保存（保留 mascot、projectFile 等未改字段）。
+ * @param clearBaseUrl 为 true 时移除 baseUrl，强制使用各提供商默认端点。
+ */
+export function mergeAndSaveUserConfig(
+    updates: Partial<UserConfig> & Pick<UserConfig, 'provider' | 'apiKey' | 'model'>,
+    options?: { clearBaseUrl?: boolean }
+): UserConfig {
+    const prev = loadUserConfig();
+    const merged: UserConfig = {
+        ...(prev ?? {}),
+        ...updates,
+    } as UserConfig;
+    if (options?.clearBaseUrl) {
+        delete merged.baseUrl;
+    }
+    saveUserConfig(merged);
+    return merged;
+}
+
+/**
  * 删除配置
  */
 export function removeUserConfig(): boolean {

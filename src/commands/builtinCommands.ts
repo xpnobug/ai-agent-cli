@@ -146,6 +146,7 @@ export const configSetCommand: SlashCommand = {
           type: 'config_set',
           currentProvider: context.config.provider,
           currentModel: context.config.model,
+          currentBaseUrl: context.config.baseUrl,
           resolve: (result) => {
             if (result) {
               resolve('配置已更新，请重新启动 CLI 以使用新配置。');

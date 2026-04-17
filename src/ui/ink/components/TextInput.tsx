@@ -11,36 +11,12 @@ import { usePasteHandler } from '../hooks/usePasteHandler.js';
 import {
   shouldAggregatePasteChunk,
 } from '../utils/paste.js';
-
-const BRACKETED_PASTE_ENABLE = '\x1b[?2004h';
-const BRACKETED_PASTE_DISABLE = '\x1b[?2004l';
-const BRACKETED_PASTE_START = '\x1b[200~';
-const BRACKETED_PASTE_END = '\x1b[201~';
-const BRACKETED_PASTE_START_NO_ESC = '[200~';
-const BRACKETED_PASTE_END_NO_ESC = '[201~';
-
-let bracketedPasteRefCount = 0;
-
-function setBracketedPasteEnabled(enabled: boolean) {
-  if (!process.stdout?.isTTY) return;
-  process.stdout.write(
-    enabled ? BRACKETED_PASTE_ENABLE : BRACKETED_PASTE_DISABLE
-  );
-}
-
-function acquireBracketedPasteMode() {
-  if (bracketedPasteRefCount === 0) {
-    setBracketedPasteEnabled(true);
-  }
-  bracketedPasteRefCount++;
-}
-
-function releaseBracketedPasteMode() {
-  bracketedPasteRefCount = Math.max(0, bracketedPasteRefCount - 1);
-  if (bracketedPasteRefCount === 0) {
-    setBracketedPasteEnabled(false);
-  }
-}
+import {
+  acquireBracketedPasteMode,
+  releaseBracketedPasteMode,
+  consumeBracketedPasteStream,
+  type BracketedPasteStreamState,
+} from '../utils/bracketedPasteStream.js';
 
 export type TextInputProps = {
   onHistoryUp?: () => void;
@@ -119,11 +95,11 @@ export default function TextInput({
     timeoutId: ReturnType<typeof setTimeout> | null;
   }>({ chunks: [], timeoutId: null });
 
-  const bracketedPasteState = React.useRef<{
-    mode: 'normal' | 'in_paste';
-    incomplete: string;
-    buffer: string;
-  }>({ mode: 'normal', incomplete: '', buffer: '' });
+  const bracketedPasteState = React.useRef<BracketedPasteStreamState>({
+    mode: 'normal',
+    incomplete: '',
+    buffer: '',
+  });
 
   const { handlePaste } = usePasteHandler({
     // 普通粘贴仍按文本输入处理，保持现有输入体验。
@@ -140,108 +116,6 @@ export default function TextInput({
 
   const flushBracketedPasteBuffer = (rawText: string) => {
     handlePaste(rawText);
-  };
-
-  const longestSuffixPrefix = (haystack: string, needle: string): number => {
-    const max = Math.min(haystack.length, needle.length - 1);
-    for (let len = max; len > 0; len--) {
-      if (haystack.endsWith(needle.slice(0, len))) return len;
-    }
-    return 0;
-  };
-
-  const findFirstMarker = (
-    haystack: string,
-    markers: string[]
-  ): { index: number; marker: string } | null => {
-    let best: { index: number; marker: string } | null = null;
-    for (const marker of markers) {
-      const index = haystack.indexOf(marker);
-      if (index === -1) continue;
-      if (!best || index < best.index) {
-        best = { index, marker };
-      }
-    }
-    return best;
-  };
-
-  const getSuffixKeepLength = (haystack: string, markers: string[]): number => {
-    let keep = 0;
-    for (const marker of markers) {
-      keep = Math.max(keep, longestSuffixPrefix(haystack, marker));
-    }
-    return keep;
-  };
-
-  const handleBracketedPasteSequences = (input: string): boolean => {
-    const state = bracketedPasteState.current;
-    let handledAny = false;
-    let data = state.incomplete + input;
-    state.incomplete = '';
-
-    const startMarkers = [BRACKETED_PASTE_START, BRACKETED_PASTE_START_NO_ESC];
-    const endMarkers = [BRACKETED_PASTE_END, BRACKETED_PASTE_END_NO_ESC];
-
-    while (data) {
-      if (state.mode === 'normal') {
-        const start = findFirstMarker(data, startMarkers);
-        if (!start) {
-          const keep = getSuffixKeepLength(data, startMarkers);
-          if (keep === 0) {
-            if (!handledAny) {
-              return false;
-            }
-            onInput(data, {} as Key);
-            return true;
-          }
-
-          const toInsert = data.slice(0, -keep);
-          if (toInsert) {
-            onInput(toInsert, {} as Key);
-          }
-          state.incomplete = data.slice(-keep);
-          handledAny = true;
-          return true;
-        }
-
-        const before = data.slice(0, start.index);
-        if (before) {
-          onInput(before, {} as Key);
-        }
-
-        data = data.slice(start.index + start.marker.length);
-        state.mode = 'in_paste';
-        handledAny = true;
-        continue;
-      }
-
-      const end = findFirstMarker(data, endMarkers);
-      if (!end) {
-        const keep = getSuffixKeepLength(data, endMarkers);
-        const content = keep > 0 ? data.slice(0, -keep) : data;
-        if (content) {
-          state.buffer += content;
-        }
-        if (keep > 0) {
-          state.incomplete = data.slice(-keep);
-        }
-        handledAny = true;
-        return true;
-      }
-
-      state.buffer += data.slice(0, end.index);
-      const completedPaste = state.buffer;
-      state.buffer = '';
-      state.mode = 'normal';
-
-      flushBracketedPasteBuffer(completedPaste);
-
-      data = data.slice(end.index + end.marker.length);
-      handledAny = true;
-      continue;
-    }
-
-    return true;
   };
 
   const resetPasteTimeout = (
@@ -306,7 +180,13 @@ export default function TextInput({
       return;
     }
 
-    if (input && handleBracketedPasteSequences(input)) {
+    if (
+      input &&
+      consumeBracketedPasteStream(input, bracketedPasteState.current, {
+        onPlainText: (t) => onInput(t, {} as Key),
+        onPasteComplete: flushBracketedPasteBuffer,
+      })
+    ) {
       return;
     }
 
