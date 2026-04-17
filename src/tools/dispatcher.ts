@@ -8,6 +8,8 @@ import { runBash, runTaskStop } from './filesystem/bash.js';
 import { runTaskOutput } from './system/taskOutput.js';
 import type { BashOptions } from './filesystem/bash.js';
 import { runRead, runWrite, runEdit } from './filesystem/fileOps.js';
+import { runNotebookEdit } from './filesystem/notebook.js';
+import { runCronCreate, runCronList, runCronDelete } from './system/cronTool.js';
 import { runGlob } from './search/glob.js';
 import { runGrep } from './search/grep.js';
 import type { GrepOutputMode } from './search/grep.js';
@@ -225,6 +227,22 @@ export function createExecuteTool(config: ToolExecutorConfig): ExecuteToolFunc {
 
         case 'TaskStop':
           result = await runTaskStop(input.task_id as string);
+          break;
+
+        case 'NotebookEdit':
+          result = await runNotebookEdit(input as Parameters<typeof runNotebookEdit>[0]);
+          break;
+
+        case 'CronCreate':
+          result = await runCronCreate(input as Parameters<typeof runCronCreate>[0]);
+          break;
+
+        case 'CronList':
+          result = await runCronList();
+          break;
+
+        case 'CronDelete':
+          result = await runCronDelete(input as Parameters<typeof runCronDelete>[0]);
           break;
 
         case 'Task': {

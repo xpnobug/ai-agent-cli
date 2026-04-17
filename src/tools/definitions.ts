@@ -813,7 +813,75 @@ export const TASK_LIST_TOOL: ToolDefinition = {
   },
 };
 
-// 基础工具列表（不含 Task，用于子代理）
+// NotebookEdit — 编辑 .ipynb 单元格
+export const NOTEBOOK_EDIT_TOOL: ToolDefinition = {
+  name: 'NotebookEdit',
+  description: `编辑 Jupyter .ipynb 单元格。支持 replace / insert / delete 三种模式。
+
+用法:
+- notebook_path 必须是绝对路径，指向 .ipynb
+- cell_number 为 0-based 索引（replace/delete 必填；insert 可省略，默认追加）
+- insert 模式下必须给出 cell_type（code 或 markdown）
+- new_source 为新的单元格源码（字符串）`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      notebook_path: { type: 'string', description: '.ipynb 绝对路径' },
+      cell_number: { type: 'number', description: '0-based 单元格索引' },
+      cell_id: { type: 'string', description: '目标单元格 id（可替代 cell_number）' },
+      cell_type: { type: 'string', enum: ['code', 'markdown'] },
+      edit_mode: {
+        type: 'string',
+        enum: ['replace', 'insert', 'delete'],
+        description: '默认 replace',
+      },
+      new_source: { type: 'string', description: '新的单元格源码（对 delete 无效）' },
+    },
+    required: ['notebook_path'],
+  },
+};
+
+// CronCreate — 创建定时任务
+export const CRON_CREATE_TOOL: ToolDefinition = {
+  name: 'CronCreate',
+  description: `创建一个定时任务，到时间触发后会把 prompt 入队为一次 /loop 输入。
+
+- cron: 标准 5 字段表达式（分 时 日 月 周），本地时区
+- prompt: 触发时要执行的提示词
+- recurring: true=周期触发，false=仅触发一次（默认 true）
+- durable: true=持久化到 .ai-agent/scheduled_tasks.json；false=仅当前会话`,
+  input_schema: {
+    type: 'object',
+    properties: {
+      cron: { type: 'string', description: '5 字段 cron 表达式' },
+      prompt: { type: 'string', description: '触发时执行的提示词' },
+      recurring: { type: 'boolean', description: '是否重复执行（默认 true）' },
+      durable: { type: 'boolean', description: '是否持久化（默认 false）' },
+    },
+    required: ['cron', 'prompt'],
+  },
+};
+
+// CronList — 列出所有定时任务
+export const CRON_LIST_TOOL: ToolDefinition = {
+  name: 'CronList',
+  description: '列出所有已创建的定时任务（包含持久化与会话级）。',
+  input_schema: { type: 'object', properties: {}, required: [] },
+};
+
+// CronDelete — 删除定时任务
+export const CRON_DELETE_TOOL: ToolDefinition = {
+  name: 'CronDelete',
+  description: '按 id 删除定时任务，可一次传多个 id。',
+  input_schema: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: '单个任务 id' },
+      ids: { type: 'array', items: { type: 'string' }, description: '多个任务 id 列表' },
+    },
+    required: [],
+  },
+};
 export const BASE_TOOLS: ToolDefinition[] = [
   BASH_TOOL,
   READ_FILE_TOOL,
@@ -834,6 +902,10 @@ export const BASE_TOOLS: ToolDefinition[] = [
   TASK_GET_TOOL,
   TASK_UPDATE_TOOL,
   TASK_LIST_TOOL,
+  NOTEBOOK_EDIT_TOOL,
+  CRON_CREATE_TOOL,
+  CRON_LIST_TOOL,
+  CRON_DELETE_TOOL,
   ...getMCPBuiltinTools(),
 ];
 
