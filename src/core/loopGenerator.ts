@@ -113,8 +113,15 @@ export async function* agentLoopGenerator(
   while (turns < maxTurns) {
     turns++;
 
-    // 检查中断
-    if (abortController?.signal.aborted) {
+    // 轮次开始前：用 StopChain 做一次早期检查，当前只 abort 钩子会命中
+    const preTurnStop = createDefaultStopChain().evaluate({
+      turn: turns,
+      maxTurns,
+      toolCallCount: 1, // 占位：此处仅关心 abort 分支
+      adapterStopReason: 'tool_use',
+      abortSignal: abortController?.signal,
+    });
+    if (preTurnStop.shouldStop && preTurnStop.reason === 'aborted') {
       break;
     }
 
@@ -244,29 +251,42 @@ export async function* agentLoopGenerator(
         tokenTracker.addRecord(streamResult!.usage);
       }
 
-      // 4. 处理中断
-      if (streamResult!.stopReason === 'interrupted' || abortController?.signal.aborted) {
-        if (!silent && streamedText) {
-          yield { type: 'info', message: '[生成已中断]' };
-        }
-        if (streamedText) {
-          const partialMessage: Message = {
-            role: 'assistant',
-            content: [{ type: 'text', text: streamedText }],
-            uuid: generateUuid(),
-          };
-          currentHistory.push(partialMessage);
-          if (shouldPersistSession) {
-            appendSessionJsonlFromMessage({ message: partialMessage, agentId });
-          }
-        }
-        break;
-      }
-
-      // 5. 提取工具调用
+      // 4. 用 StopChain 统一判定本轮后是否应终止
+      //    覆盖三种情况：aborted / stream_interrupted / final_response
+      //    保留原有侧效果（保存 partial / 事件发射 / 历史追加）
       const { toolCalls, stopReason } = streamResult!;
-      const isFinalResponse =
-        toolCalls.length === 0 || (stopReason !== 'tool_use' && stopReason !== 'tool_calls');
+      const stopDecision = createDefaultStopChain().evaluate({
+        turn: turns,
+        maxTurns,
+        toolCallCount: toolCalls.length,
+        adapterStopReason: stopReason,
+        abortSignal: abortController?.signal,
+      });
+
+      if (stopDecision.shouldStop) {
+        // 中断类：保存部分文本后退出
+        if (
+          stopDecision.reason === 'aborted' ||
+          stopDecision.reason === 'stream_interrupted'
+        ) {
+          if (!silent && streamedText) {
+            yield { type: 'info', message: stopDecision.message ?? '[生成已中断]' };
+          }
+          if (streamedText) {
+            const partialMessage: Message = {
+              role: 'assistant',
+              content: [{ type: 'text', text: streamedText }],
+              uuid: generateUuid(),
+            };
+            currentHistory.push(partialMessage);
+            if (shouldPersistSession) {
+              appendSessionJsonlFromMessage({ message: partialMessage, agentId });
+            }
+          }
+          break;
+        }
+        // final_response：正常收尾，走下面统一的 stream_done + history 路径后退出
+      }
 
       // 6. 流式文本完成事件（始终 yield，避免跨轮泄漏）
       if (!silent && streamedText) {
@@ -285,8 +305,8 @@ export async function* agentLoopGenerator(
         });
       }
 
-      // 8. 没有工具调用则结束
-      if (isFinalResponse) {
+      // 8. 正常收尾就此退出；否则继续下一轮进入工具执行
+      if (stopDecision.shouldStop) {
         break;
       }
 
