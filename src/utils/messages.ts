@@ -22,16 +22,24 @@ import type {
   ToolResultBlock,
   UserMessage,
 } from '../types/message.js';
+import { partiallySanitizeUnicode } from './sanitization.js';
 
 // ─── 消息工厂 ───
 
-/** 创建用户消息 */
+/** 创建用户消息
+ *
+ * 入口净化：当 content 为字符串时（即用户直接键入的文本），
+ * 自动做 Unicode 净化防护（ASCII Smuggling / 隐藏提示注入）。
+ * 传入 ContentBlockParam[] 的通常是内部组装（如附件、tool_result
+ * 回写），不在此处二次处理，避免误伤二进制/非文本块；
+ * 这类外部数据应由各自 loader 在写入时就做净化。
+ */
 export function createUserMessage(params: {
   content: string | ContentBlockParam[];
   isMeta?: boolean;
 }): UserMessage {
   const content: ContentBlockParam[] = typeof params.content === 'string'
-    ? [{ type: 'text', text: params.content }]
+    ? [{ type: 'text', text: partiallySanitizeUnicode(params.content) }]
     : params.content;
 
   return {
