@@ -38,6 +38,7 @@ export interface UIController {
     options?: {
       commandPrefix?: string | null;
       commandInjectionDetected?: boolean;
+      destructiveWarning?: string | null;
     }
   ): Promise<PermissionDecision>;
 

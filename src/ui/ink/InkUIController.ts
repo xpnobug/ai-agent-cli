@@ -351,7 +351,11 @@ export class InkUIController implements UIController {
     toolName: string,
     params: Record<string, unknown>,
     reason?: string,
-    options?: { commandPrefix?: string | null; commandInjectionDetected?: boolean }
+    options?: {
+      commandPrefix?: string | null;
+      commandInjectionDetected?: boolean;
+      destructiveWarning?: string | null;
+    }
   ): Promise<import('../../core/permissions.js').PermissionDecision> {
     return new Promise((resolve) => {
       setFocus(this.store, {
@@ -361,6 +365,7 @@ export class InkUIController implements UIController {
         reason,
         commandPrefix: options?.commandPrefix,
         commandInjectionDetected: options?.commandInjectionDetected,
+        destructiveWarning: options?.destructiveWarning,
         resolve: (result) => {
           setFocus(this.store, undefined);
           resolve(result);

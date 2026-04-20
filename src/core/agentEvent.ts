@@ -32,6 +32,8 @@ export type AgentEvent =
       reason?: string;
       commandPrefix?: string | null;
       commandInjectionDetected?: boolean;
+      /** 命中危险命令模式时的中文警告（仅 UI 展示，不影响权限决策） */
+      destructiveWarning?: string | null;
       resolve: (r: PermissionDecision) => void;
     }
   | { type: 'retry'; attempt: number; maxAttempts: number; delay: number; error: string }

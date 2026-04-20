@@ -27,6 +27,8 @@ export interface PermissionPromptProps {
   reason?: string;
   commandPrefix?: string | null;
   commandInjectionDetected?: boolean;
+  /** 危险命令警告文本（中文），仅 UI 展示，不改变权限选项 */
+  destructiveWarning?: string | null;
   onResolve: (result: PermissionDecision) => void;
 }
 
@@ -145,6 +147,7 @@ export function PermissionPrompt({
   reason,
   commandPrefix,
   commandInjectionDetected,
+  destructiveWarning,
   onResolve,
 }: PermissionPromptProps) {
   const colors = getInkColors();
@@ -217,6 +220,9 @@ export function PermissionPrompt({
       {/* 按工具类型分发内容预览区 */}
       <Box flexDirection="column" paddingX={1} paddingY={1}>
         <PermissionPreview toolName={toolName} params={params} />
+        {destructiveWarning && (
+          <Text color={colors.warning}>⚠  注意：{destructiveWarning}</Text>
+        )}
         {reason && <Text color={colors.textDim} dimColor>{reason}</Text>}
       </Box>
 

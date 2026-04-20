@@ -114,6 +114,7 @@ export type FocusTarget =
       reason?: string;
       commandPrefix?: string | null;
       commandInjectionDetected?: boolean;
+      destructiveWarning?: string | null;
       resolve: (r: PermissionDecision) => void;
     }
   | {

@@ -21,6 +21,7 @@ import { getReminderManager } from './reminder.js';
 import { withRetry } from '../utils/retry.js';
 import { DEFAULTS, TOOL_REJECT_MESSAGE } from './constants.js';
 import { getCommandSubcommandPrefix } from './commandPrefix.js';
+import { getDestructiveCommandWarning } from './destructiveCommandWarning.js';
 import { normalizeToolExecutionResult, toolResultContentToText } from './toolResult.js';
 import { generateUuid } from '../utils/uuid.js';
 import { appendSessionJsonlFromMessage } from '../services/session/sessionLog.js';
@@ -386,9 +387,12 @@ export async function* agentLoopGenerator(
 
             let commandPrefix: string | null | undefined;
             let commandInjectionDetected: boolean | undefined;
+            let destructiveWarning: string | null | undefined;
             if (toolCall.name === 'bash') {
               const command = typeof toolCall.input.command === 'string' ? toolCall.input.command : '';
               if (command) {
+                // 危险命令模式识别（纯本地正则，无 adapter 调用）
+                destructiveWarning = getDestructiveCommandWarning(command);
                 try {
                   const prefixResult = await getCommandSubcommandPrefix(command, adapter);
                   if (prefixResult?.commandInjectionDetected) {
@@ -411,6 +415,7 @@ export async function* agentLoopGenerator(
               reason: checkResult.reason,
               commandPrefix,
               commandInjectionDetected,
+              destructiveWarning,
               resolve: confirmResolve,
             });
 

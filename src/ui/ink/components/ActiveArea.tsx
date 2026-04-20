@@ -75,6 +75,7 @@ export function DynamicArea({
           reason={focus.reason}
           commandPrefix={focus.commandPrefix}
           commandInjectionDetected={focus.commandInjectionDetected}
+          destructiveWarning={focus.destructiveWarning}
           onResolve={focus.resolve}
         />
       )}

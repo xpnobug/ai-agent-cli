@@ -113,6 +113,7 @@ export async function agentLoop(
             {
               commandPrefix: event.commandPrefix,
               commandInjectionDetected: event.commandInjectionDetected,
+              destructiveWarning: event.destructiveWarning,
             }
           );
           event.resolve(result);
