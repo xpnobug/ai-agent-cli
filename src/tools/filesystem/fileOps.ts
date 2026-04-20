@@ -6,6 +6,10 @@ import fs from 'fs-extra';
 import path from 'node:path';
 import type { ToolExecutionResult, ToolResultContentBlock } from '../../core/types.js';
 import { getPatchFromContents, renderHunksForUI, summarizeHunks } from '../../utils/diff.js';
+import {
+  recordFileRead,
+  getFileReadTimestamp,
+} from '../../services/system/fileFreshness.js';
 
 const MAX_OUTPUT_SIZE = 0.25 * 1024 * 1024; // 0.25MB
 const MAX_LINE_LENGTH = 2000;
@@ -537,6 +541,9 @@ export async function runRead(
       return buildError(`错误: ${filePath} 是一个目录，请使用 bash ls 命令查看目录内容`);
     }
 
+    // 记录本次读取时的 mtime，供后续 Edit/Write 做新鲜度检测
+    recordFileRead(fullPath, stats.mtimeMs);
+
     const ext = path.extname(fullPath).toLowerCase();
 
     if (BINARY_EXTENSIONS.has(ext)) {
@@ -650,6 +657,37 @@ export async function runRead(
 }
 
 /**
+ * 新鲜度检查：确保写入/编辑前已读取且内容未被外部改动。
+ *
+ * 返回 null 表示通过；返回字符串表示要拒绝的错误消息。
+ */
+async function checkFileFreshness(fullPath: string): Promise<string | null> {
+  if (!(await fs.pathExists(fullPath))) return null; // 新建文件，无需检查
+  try {
+    const stats = await fs.stat(fullPath);
+    if (!stats.isFile()) return null; // 非文件路径（如 socket），交给后续逻辑处理
+    const last = getFileReadTimestamp(fullPath);
+    if (last === null) {
+      return `错误: 文件 ${fullPath} 在修改前未被读取。请先用 read_file 读取内容，避免覆盖当前磁盘状态。`;
+    }
+    // 允许 2ms 容差（某些文件系统 mtime 精度 1ms，某些为 2ms）
+    if (stats.mtimeMs - last > 2) {
+      const lastIso = new Date(last).toISOString();
+      const currIso = new Date(stats.mtimeMs).toISOString();
+      return (
+        `错误: 文件 ${fullPath} 自上次读取后被外部修改。\n` +
+        `  上次读取: ${lastIso}\n` +
+        `  当前 mtime: ${currIso}\n` +
+        `请重新 read_file 获取最新内容后再编辑，避免覆盖他人改动。`
+      );
+    }
+  } catch {
+    // stat 失败不阻塞；交给后续读写路径抛更具体的错
+  }
+  return null;
+}
+
+/**
  * 写入文件
  */
 export async function runWrite(
@@ -663,6 +701,11 @@ export async function runWrite(
     }
 
     const fullPath = path.resolve(workdir, filePath);
+
+    // 新鲜度检查：已存在的文件必须先读过且未被外部改动
+    const fresh = await checkFileFreshness(fullPath);
+    if (fresh) return buildError(fresh);
+
     const exists = await fs.pathExists(fullPath);
     const originalFile = exists ? await fs.readFile(fullPath, 'utf-8') : null;
 
@@ -676,6 +719,14 @@ export async function runWrite(
     }
 
     await fs.writeFile(fullPath, content, 'utf-8');
+
+    // 更新新鲜度记录：本次写入后的 mtime 视为已读状态
+    try {
+      const st = await fs.stat(fullPath);
+      recordFileRead(fullPath, st.mtimeMs);
+    } catch {
+      // 更新失败不影响主流程
+    }
 
     const result = buildWriteResult(filePath, originalFile, content);
 
@@ -716,6 +767,10 @@ export async function runEdit(
     if (!(await fs.pathExists(fullPath))) {
       return buildError(`错误: 文件不存在: ${filePath}`);
     }
+
+    // 新鲜度检查：必须先读且未被外部改动
+    const fresh = await checkFileFreshness(fullPath);
+    if (fresh) return buildError(fresh);
 
     const content = await fs.readFile(fullPath, 'utf-8');
 
@@ -760,6 +815,15 @@ export async function runEdit(
     if (backup) createSnapshot([backup]);
 
     await fs.writeFile(fullPath, updated, 'utf-8');
+
+    // 更新新鲜度记录：本次编辑后的 mtime 作为新的"已读"基准，
+    // 同一轮内继续编辑同文件不会误报
+    try {
+      const st = await fs.stat(fullPath);
+      recordFileRead(fullPath, st.mtimeMs);
+    } catch {
+      // 更新失败不影响主流程
+    }
 
     const result = buildEditResult(
       filePath,
