@@ -720,11 +720,27 @@ export async function runEdit(
     const content = await fs.readFile(fullPath, 'utf-8');
 
     // 模糊匹配：先精确匹配，失败后尝试引号归一化 + 尾部空白归一化
-    const { findActualString } = await import('../../utils/editUtils.js');
+    const { findActualString, normalizeQuotes, stripTrailingWhitespace } = await import('../../utils/editUtils.js');
     const actualString = findActualString(content, oldString);
 
     if (!actualString) {
       return buildError(`错误: 在文件中未找到要替换的文本。请确保 old_string 精确匹配。\n文件前100字符: ${content.slice(0, 100)}...`);
+    }
+
+    // 识别 fuzzy 匹配原因，用作 UI 诊断提示
+    const fuzzyReasons: string[] = [];
+    if (actualString !== oldString) {
+      // 归一化后相等 ⇒ 引号差异是唯一变量
+      if (normalizeQuotes(actualString) === normalizeQuotes(oldString)) {
+        fuzzyReasons.push('弯引号已归一化匹配');
+      } else if (
+        stripTrailingWhitespace(actualString) ===
+        stripTrailingWhitespace(oldString)
+      ) {
+        fuzzyReasons.push('尾部空白差异已忽略');
+      } else {
+        fuzzyReasons.push('已做模糊匹配');
+      }
     }
 
     // 使用实际匹配到的字符串进行替换（可能是弯引号版本）
@@ -757,7 +773,8 @@ export async function runEdit(
     const diffBlock = renderHunksForUI(result.structuredPatch);
     const summary = summarizeHunks(result.structuredPatch);
     const header = `Edited ${filePath}${summary ? `  (${summary})` : ''}`;
-    const uiContent = diffBlock ? `${header}\n\n${diffBlock}` : header;
+    const notice = fuzzyReasons.length > 0 ? `\nℹ  ${fuzzyReasons.join('；')}\n` : '';
+    const uiContent = diffBlock ? `${header}${notice}\n${diffBlock}` : `${header}${notice}`;
 
     return {
       content: JSON.stringify(result),

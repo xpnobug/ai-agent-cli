@@ -110,4 +110,31 @@ describe('runEdit', () => {
     expect(obj.uiContent!).toContain('old line');
     expect(obj.uiContent!).toContain('new line');
   });
+
+  it('模型发弯引号、文件直引号 → 成功 + 显示归一化提示', async () => {
+    const fp = path.join(workdir, 'q.ts');
+    fs.writeFileSync(fp, 'const msg = "hello";\n');
+    // \u201D = 弯右双引号
+    const r = await runEdit(workdir, fp, '"hello\u201D', '"world"');
+    const obj = r as { uiContent?: string };
+    expect(obj.uiContent).toContain('弯引号已归一化匹配');
+    expect(fs.readFileSync(fp, 'utf-8')).toContain('"world"');
+  });
+
+  it('文件弯引号、模型直引号 → 同样识别为弯引号差异', async () => {
+    const fp = path.join(workdir, 'q2.ts');
+    fs.writeFileSync(fp, 'const msg = \u201Chello\u201D;\n');
+    const r = await runEdit(workdir, fp, '"hello"', '"world"');
+    const obj = r as { uiContent?: string };
+    expect(obj.uiContent).toContain('弯引号已归一化匹配');
+  });
+
+  it('精确匹配不显示归一化提示', async () => {
+    const fp = path.join(workdir, 'q3.ts');
+    fs.writeFileSync(fp, 'const msg = "hello";\n');
+    const r = await runEdit(workdir, fp, '"hello"', '"ok"');
+    const obj = r as { uiContent?: string };
+    expect(obj.uiContent).not.toContain('归一化');
+    expect(obj.uiContent).not.toContain('模糊匹配');
+  });
 });
