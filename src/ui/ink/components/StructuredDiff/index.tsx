@@ -16,6 +16,7 @@
 import { diffWordsWithSpace, type StructuredPatchHunk } from 'diff';
 import React, { useMemo } from 'react';
 import { Box, Text } from '../../primitives.js';
+import { getInkColors } from '../../../theme.js';
 
 // ─── 类型 ───
 
@@ -177,7 +178,8 @@ function generateWordDiffElements(
 
   const diffPrefix = item.type === 'add' ? '+' : '-';
   const lineNumStr = item.i.toString().padStart(maxWidth) + ' ';
-  const bgColor = item.type === 'add' ? 'green' : 'red';
+  const colors = getInkColors();
+  const bgColor = item.type === 'add' ? colors.diffAdded : colors.diffRemoved;
 
   // 构建逐词高亮元素
   const parts: React.ReactNode[] = [];
@@ -186,10 +188,10 @@ function generateWordDiffElements(
     let show = false;
     let wordBg: string | undefined;
     if (item.type === 'add') {
-      if (part.added) { show = true; wordBg = 'greenBright'; }
+      if (part.added) { show = true; wordBg = colors.diffAddedWord; }
       else if (!part.removed) { show = true; }
     } else {
-      if (part.removed) { show = true; wordBg = 'redBright'; }
+      if (part.removed) { show = true; wordBg = colors.diffRemovedWord; }
       else if (!part.added) { show = true; }
     }
     if (show) {
@@ -239,10 +241,11 @@ function formatDiff(
     // 标准渲染
     const lineNumStr = item.i.toString().padStart(maxWidth) + ' ';
     const sigil = item.type === 'add' ? '+' : item.type === 'remove' ? '-' : ' ';
+    const colors = getInkColors();
     const bgColor = item.type === 'add'
-      ? (dim ? undefined : 'green')
+      ? (dim ? colors.diffAddedDimmed : colors.diffAdded)
       : item.type === 'remove'
-        ? (dim ? undefined : 'red')
+        ? (dim ? colors.diffRemovedDimmed : colors.diffRemoved)
         : undefined;
 
     // 为了让背景色从行首延伸到屏幕宽度（而不是只覆盖字符范围），

@@ -9,6 +9,7 @@ import { Box, Text, useInput } from '../../primitives.js';
 import { Pane } from '../design-system/Pane.js';
 import { StructuredDiffList } from '../StructuredDiff/index.js';
 import type { StructuredPatchHunk } from 'diff';
+import { getInkColors } from '../../../theme.js';
 
 // ─── 类型 ───
 
@@ -35,16 +36,17 @@ function DiffFileList({
   selectedIndex: number;
   onSelect: (index: number) => void;
 }): React.ReactNode {
+  const colors = getInkColors();
   return (
     <Box flexDirection="column">
       <Text bold>Changed files ({files.length})</Text>
       {files.map((file, i) => (
         <Box key={file.filePath} gap={1} onClick={() => onSelect(i)}>
-          <Text color={i === selectedIndex ? 'cyan' : undefined} bold={i === selectedIndex}>
+          <Text color={i === selectedIndex ? colors.info : undefined} bold={i === selectedIndex}>
             {i === selectedIndex ? '▸' : ' '} {file.filePath}
           </Text>
-          <Text color="green">+{file.additions}</Text>
-          <Text color="red">-{file.deletions}</Text>
+          <Text color={colors.success}>+{file.additions}</Text>
+          <Text color={colors.error}>-{file.deletions}</Text>
         </Box>
       ))}
     </Box>
@@ -55,15 +57,16 @@ function DiffFileList({
 
 function DiffDetailView({ file }: { file: DiffFile }): React.ReactNode {
   const width = Math.max(40, (process.stdout.columns || 80) - 16);
+  const colors = getInkColors();
 
   return (
     <Box flexDirection="column">
       <Box marginBottom={1}>
-        <Text bold color="cyan">{file.filePath}</Text>
+        <Text bold color={colors.info}>{file.filePath}</Text>
         <Text> </Text>
-        <Text color="green">+{file.additions}</Text>
+        <Text color={colors.success}>+{file.additions}</Text>
         <Text> </Text>
-        <Text color="red">-{file.deletions}</Text>
+        <Text color={colors.error}>-{file.deletions}</Text>
       </Box>
       <StructuredDiffList hunks={file.hunks} filePath={file.filePath} width={width} />
     </Box>

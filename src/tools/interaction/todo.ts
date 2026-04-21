@@ -76,6 +76,10 @@ export class TodoManager {
 
   /**
    * 渲染 todo 列表
+   *
+   * 用纯 ASCII 字符做状态图标避免终端/字体的 East Asian Ambiguous
+   * 宽度问题：`◼/◻` 在不同终端常被渲染成 1 或 2 列，导致多行对齐错位。
+   * 改为 `[x] / [>] / [ ]` 都是 3 列 ASCII，宽度绝对稳定。
    */
   render(): string {
     if (this.todos.length === 0) {
@@ -87,12 +91,12 @@ export class TodoManager {
     for (let i = 0; i < this.todos.length; i++) {
       const item = this.todos[i];
       if (item.status === 'completed') {
-        lines.push(` ◼ ${item.content}`);
+        lines.push(`[✔️] ${item.content}`);
       } else if (item.status === 'in_progress') {
         const displayText = item.activeForm.trim() || item.content;
-        lines.push(` ◻ ${displayText}`);
+        lines.push(`[>] ${displayText}`);
       } else {
-        lines.push(` ◻ ${item.content}`);
+        lines.push(`[ ] ${item.content}`);
       }
     }
 

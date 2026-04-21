@@ -9,6 +9,7 @@
 import React from 'react';
 import { Box, Text } from '../primitives.js';
 import { MessageResponse } from './MessageResponse.js';
+import { getInkColors } from '../../theme.js';
 
 const MAX_RENDERED_LINES = 10;
 
@@ -47,11 +48,12 @@ export function FallbackToolUseErrorMessage({ result, verbose }: Props): React.R
   const lines = error.split('\n');
   const plusLines = lines.length - MAX_RENDERED_LINES;
   const displayed = verbose ? error : lines.slice(0, MAX_RENDERED_LINES).join('\n');
+  const colors = getInkColors();
 
   return (
     <MessageResponse>
       <Box flexDirection="column">
-        <Text color="red">{displayed}</Text>
+        <Text color={colors.error}>{displayed}</Text>
         {!verbose && plusLines > 0 && (
           <Box>
             <Text dimColor>… +{plusLines} {plusLines === 1 ? 'line' : 'lines'}</Text>

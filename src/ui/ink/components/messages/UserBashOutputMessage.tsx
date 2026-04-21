@@ -7,6 +7,7 @@
 import React from 'react';
 import { Box, Text } from '../../primitives.js';
 import { MessageResponse } from '../MessageResponse.js';
+import { getInkColors } from '../../../theme.js';
 
 const MAX_OUTPUT_LINES = 15;
 
@@ -21,6 +22,7 @@ type Props = {
 
 export function UserBashOutputMessage({ stdout = '', stderr = '', verbose = false }: Props): React.ReactNode {
   const output = (stdout + (stderr ? `\n${stderr}` : '')).trim();
+  const colors = getInkColors();
 
   if (!output) {
     return (
@@ -43,7 +45,7 @@ export function UserBashOutputMessage({ stdout = '', stderr = '', verbose = fals
           <Text dimColor>… +{extra} lines</Text>
         )}
         {stderr && !verbose && (
-          <Text color="red" dimColor>{stderr.slice(0, 200)}</Text>
+          <Text color={colors.error} dimColor>{stderr.slice(0, 200)}</Text>
         )}
       </Box>
     </MessageResponse>

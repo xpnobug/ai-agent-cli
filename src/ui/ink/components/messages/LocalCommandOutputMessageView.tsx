@@ -10,11 +10,13 @@ import { Markdown } from '../markdown/Markdown.js';
 import type { MessageViewProps } from './registry.js';
 import { registerMessageView } from './registry.js';
 import type { CompletedItem } from '../../types.js';
+import { getInkColors } from '../../../theme.js';
 
 type LocalCommandOutputItem = Extract<CompletedItem, { type: 'local_command_output' }>;
 
 function LocalCommandOutputMessageView({ item }: MessageViewProps<LocalCommandOutputItem>): React.ReactNode {
   const hasOutput = item.stdout || item.stderr;
+  const colors = getInkColors();
 
   if (!hasOutput) {
     return (
@@ -36,7 +38,7 @@ function LocalCommandOutputMessageView({ item }: MessageViewProps<LocalCommandOu
       )}
       {item.stderr && (
         <Box flexDirection="column">
-          <Text color="red">{item.stderr}</Text>
+          <Text color={colors.error}>{item.stderr}</Text>
         </Box>
       )}
     </Box>

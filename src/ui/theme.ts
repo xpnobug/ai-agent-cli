@@ -372,6 +372,8 @@ export function getInkColors() {
     remember: themeColorToInk(t.remember),
     diffAdded: themeColorToInk(t.diffAdded),
     diffRemoved: themeColorToInk(t.diffRemoved),
+    diffAddedDimmed: themeColorToInk(t.diffAddedDimmed),
+    diffRemovedDimmed: themeColorToInk(t.diffRemovedDimmed),
     diffAddedWord: themeColorToInk(t.diffAddedWord),
     diffRemovedWord: themeColorToInk(t.diffRemovedWord),
     userMessageBackground: themeColorToInk(t.userMessageBackground),

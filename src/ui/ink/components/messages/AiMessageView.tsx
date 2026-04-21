@@ -16,6 +16,7 @@ import { MessageModel } from '../MessageModel.js';
 import { MessageTimestamp } from '../MessageTimestamp.js';
 import { InterruptedByUser } from '../InterruptedByUser.js';
 import { MessageResponse } from '../MessageResponse.js';
+import { getInkColors } from '../../../theme.js';
 
 type AiMessageItem = Extract<CompletedItem, { type: 'ai_message' }>;
 
@@ -56,6 +57,7 @@ function isApiError(text: string): boolean {
 export function AiMessageView({ item }: MessageViewProps<AiMessageItem>) {
   const text = item.text || '';
   const hasMetadata = item.model || item.elapsed != null || item.timestamp != null;
+  const colors = getInkColors();
 
   // ─── 内联 API 错误分流 ───
 
@@ -69,7 +71,7 @@ export function AiMessageView({ item }: MessageViewProps<AiMessageItem>) {
     return (
       <MessageResponse>
         <Box flexDirection="column">
-          <Text color="red">API Key 无效或已过期</Text>
+          <Text color={colors.error}>API Key 无效或已过期</Text>
           <Text dimColor>请运行 /config set 重新配置 API Key</Text>
         </Box>
       </MessageResponse>
@@ -81,7 +83,7 @@ export function AiMessageView({ item }: MessageViewProps<AiMessageItem>) {
     return (
       <MessageResponse>
         <Box flexDirection="column">
-          <Text color="yellow">请求频率超限</Text>
+          <Text color={colors.warning}>请求频率超限</Text>
           <Text dimColor>请稍后重试，或升级账户以获取更高配额</Text>
         </Box>
       </MessageResponse>
@@ -93,7 +95,7 @@ export function AiMessageView({ item }: MessageViewProps<AiMessageItem>) {
     return (
       <MessageResponse>
         <Box flexDirection="column">
-          <Text color="red">账户额度不足</Text>
+          <Text color={colors.error}>账户额度不足</Text>
           <Text dimColor>请检查账户余额或充值</Text>
         </Box>
       </MessageResponse>
@@ -105,7 +107,7 @@ export function AiMessageView({ item }: MessageViewProps<AiMessageItem>) {
     const errorText = text.slice(0, 500);
     return (
       <MessageResponse>
-        <Text color="red">{errorText}</Text>
+        <Text color={colors.error}>{errorText}</Text>
       </MessageResponse>
     );
   }
