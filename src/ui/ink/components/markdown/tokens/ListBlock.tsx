@@ -2,6 +2,7 @@
  * ListBlock - 列表组件（支持递归嵌套）
  */
 
+import React from 'react';
 import { Box, Text } from '../../../primitives.js';
 import type { Tokens, Token } from 'marked';
 import { renderInlineTokens } from '../renderToken.js';
@@ -30,18 +31,23 @@ function ListItem({ item, ordered, index, depth }: {
   depth: number;
 }) {
   const marker = ordered ? getOrderedMarker(depth, index) : '-';
+  const parts = renderItemContent(item, depth);
 
   return (
     <Box flexDirection="column">
       <Box>
         <Text>{' '.repeat(depth * 2)}{marker} </Text>
-        <Text>{renderItemContent(item, depth)}</Text>
+        <Text>
+          {parts.map((part, i) => (
+            <React.Fragment key={i}>{part}</React.Fragment>
+          ))}
+        </Text>
       </Box>
     </Box>
   );
 }
 
-function renderItemContent(item: Tokens.ListItem, _depth: number): React.ReactNode {
+function renderItemContent(item: Tokens.ListItem, _depth: number): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
 
   for (const child of (item.tokens ?? [])) {

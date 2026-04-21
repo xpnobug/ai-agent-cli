@@ -1,13 +1,15 @@
 /**
  * MessageResponse — 工具结果连接符组件
  *
- * - 前缀用 `NoSelect` + `fromLeftEdge`（全屏选择时隔离 gutter）
- * - 字符序列：两空格 + U+23BF + 普通空格 + U+00A0（与官方 sourcesContent 一致）
- * - 未指定 `height` 时用 `Ratchet lock="offscreen"` 包裹（虚拟列表高度稳定）
+ * - 多行内容用 `borderLeft=single`，让竖线自动贴合全高度，
+ *   而不是只在第一行画一条静态前缀；
+ * - 统一 1 列宽度的 `│`，避免 U+23BF / NBSP 在不同终端/字体下
+ *   被渲染成异常宽度导致后续行错位。
  */
 
 import React, { useContext, createContext } from 'react';
-import { Box, Text, NoSelect } from '../primitives.js';
+import { Box } from '../primitives.js';
+import { getInkColors } from '../../theme.js';
 import { Ratchet } from './design-system/Ratchet.js';
 
 // ─── Props ───
@@ -17,9 +19,6 @@ interface MessageResponseProps {
   /** 固定高度（行数）。指定后用 overflowY="hidden" 裁剪 */
   height?: number;
 }
-
-/** 与官方一致：`  ` + U+23BF + ` ` + U+00A0 */
-const MESSAGE_RESPONSE_GUTTER = `  \u23BF \u00a0`;
 
 // ─── 嵌套检测 Context（防止渲染多层连接符） ───
 
@@ -37,20 +36,29 @@ function MessageResponseProvider({ children }: { children: React.ReactNode }) {
 
 export function MessageResponse({ children, height }: MessageResponseProps) {
   const isMessageResponse = useContext(MessageResponseContext);
+  const colors = getInkColors();
 
   if (isMessageResponse) {
     return <>{children}</>;
   }
 
+  // borderLeft 自动按容器高度绘制，多行时每行都有 │
+  // paddingLeft 让内容和 │ 之间留一个固定的 1 格空隙
   const inner = (
     <MessageResponseProvider>
-      <Box flexDirection="row" height={height} overflowY="hidden">
-        <NoSelect fromLeftEdge flexShrink={0}>
-          <Text dimColor>{MESSAGE_RESPONSE_GUTTER}</Text>
-        </NoSelect>
-        <Box flexShrink={1} flexGrow={1}>
-          {children}
-        </Box>
+      <Box
+        borderStyle="single"
+        borderLeft
+        borderTop={false}
+        borderRight={false}
+        borderBottom={false}
+        borderColor={colors.textDim}
+        paddingLeft={1}
+        marginLeft={2}
+        height={height}
+        overflowY="hidden"
+      >
+        {children}
       </Box>
     </MessageResponseProvider>
   );
