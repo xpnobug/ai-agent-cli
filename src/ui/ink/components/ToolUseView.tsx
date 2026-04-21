@@ -19,7 +19,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   bash: 'Bash',
   read_file: 'Read',
   write_file: 'Write',
-  edit_file: 'Edit',
+  edit_file: 'Update',
   glob: 'Glob',
   grep: 'Grep',
   web_fetch: 'WebFetch',
@@ -46,7 +46,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   task_update: 'TaskUpdate',
   tasklist: 'TaskList',
   task_list: 'TaskList',
-  str_replace_based_edit_tool: 'Edit',
+  str_replace_based_edit_tool: 'Update',
   create_file: 'Write',
   view_file: 'Read',
 };

@@ -162,7 +162,7 @@ function calculateWordDiffs(oldText: string, newText: string): DiffPart[] {
 
 /** 生成逐词 diff 元素 */
 function generateWordDiffElements(
-  item: DiffLine, _width: number, maxWidth: number, dim: boolean,
+  item: DiffLine, width: number, maxWidth: number, dim: boolean,
 ): React.ReactNode[] | null {
   if (!item.wordDiff || !item.matchedLine) return null;
 
@@ -181,6 +181,7 @@ function generateWordDiffElements(
 
   // 构建逐词高亮元素
   const parts: React.ReactNode[] = [];
+  let renderedLen = lineNumStr.length + diffPrefix.length;
   wordDiffs.forEach((part, idx) => {
     let show = false;
     let wordBg: string | undefined;
@@ -195,8 +196,13 @@ function generateWordDiffElements(
       parts.push(
         <Text key={idx} backgroundColor={wordBg}>{part.value}</Text>,
       );
+      renderedLen += part.value.length;
     }
   });
+
+  // 右侧填充空格让背景色延伸到屏幕宽度
+  const padRight = Math.max(0, width - renderedLen);
+  const fill = ' '.repeat(padRight);
 
   return [
     <Box key={`${item.type}-${item.i}`} flexDirection="row">
@@ -204,7 +210,7 @@ function generateWordDiffElements(
         {lineNumStr}{diffPrefix}
       </Text>
       <Text backgroundColor={bgColor} dimColor={dim}>
-        {parts}
+        {parts}{fill}
       </Text>
     </Box>,
   ];
@@ -239,13 +245,19 @@ function formatDiff(
         ? (dim ? undefined : 'red')
         : undefined;
 
+    // 为了让背景色从行首延伸到屏幕宽度（而不是只覆盖字符范围），
+    // 把整行拼成单个字符串并右侧填空格到 safeWidth。
+    const prefix = `${lineNumStr}${sigil}`;
+    const rendered = `${prefix}${item.code}`;
+    const padded =
+      bgColor !== undefined && rendered.length < safeWidth
+        ? rendered + ' '.repeat(safeWidth - rendered.length)
+        : rendered;
+
     return [
-      <Box key={`${item.type}-${item.i}`} flexDirection="row">
+      <Box key={`${item.type}-${item.i}`}>
         <Text backgroundColor={bgColor} dimColor={dim || item.type === 'nochange'}>
-          {lineNumStr}{sigil}
-        </Text>
-        <Text backgroundColor={bgColor} dimColor={dim}>
-          {item.code}
+          {padded}
         </Text>
       </Box>,
     ];
